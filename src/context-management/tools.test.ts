@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { createContextManagementTools, NEW_CONTEXT_CHECKPOINT_REQUIRED_MESSAGE } from "./tools";
+import {
+	createContextManagementTools,
+	NEW_CONTEXT_CHECKPOINT_REQUIRED_MESSAGE,
+	NEW_CONTEXT_PARAMETERS,
+} from "./tools";
 import { CodexContextWindowManager } from "./window-manager";
 import { CODEX_CONTEXT_WINDOW_MESSAGE_TYPE } from "./messages";
 
@@ -77,7 +81,7 @@ test("new_context proceeds after a successful notes checkpoint", async () => {
 	expect(result.details).toEqual({ started: true });
 });
 
-test("new_context force bypasses the checkpoint gate", async () => {
+test("new_context cannot bypass the checkpoint gate with an obsolete force flag", async () => {
 	const branch = [
 		{
 			type: "custom_message", id: "entry-b", parentId: null, timestamp: "2026-09-07T00:00:00.000Z",
@@ -88,8 +92,10 @@ test("new_context force bypasses the checkpoint gate", async () => {
 	const manager = new CodexContextWindowManager(async () => undefined);
 	manager.restore(branch, "session-1");
 	const tools = createContextManagementTools(activePi, manager, () => true);
-	const result = await tools.newContext.execute("t1", { force: true }, undefined, undefined, makeCtx(branch));
-	expect(result.details).toEqual({ started: true });
+	expect((NEW_CONTEXT_PARAMETERS as { properties?: Record<string, unknown> }).properties).toEqual({});
+	await expect(
+		tools.newContext.execute("t1", { force: true } as never, undefined, undefined, makeCtx(branch)),
+	).rejects.toThrow(NEW_CONTEXT_CHECKPOINT_REQUIRED_MESSAGE);
 });
 
 test("new_context is still gated when remote context is inactive", async () => {
@@ -104,6 +110,6 @@ test("new_context is still gated when remote context is inactive", async () => {
 	manager.restore(branch, "session-1");
 	const tools = createContextManagementTools(activePi, manager, () => false);
 	await expect(
-		tools.newContext.execute("t1", { force: true }, undefined, undefined, makeCtx(branch)),
+		tools.newContext.execute("t1", {}, undefined, undefined, makeCtx(branch)),
 	).rejects.toThrow("remote-context-inactive");
 });

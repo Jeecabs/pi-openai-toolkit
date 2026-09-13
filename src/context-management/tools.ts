@@ -58,16 +58,11 @@ export const NOTES_PARAMETERS = Type.Object({
 
 export interface NewContextDetails { started: boolean; }
 
-export const NEW_CONTEXT_PARAMETERS = Type.Object({
-	force: Type.Optional(Type.Boolean({
-	description: "Roll over even without a successful notes checkpoint in this window. Discards unsaved working state.",
-})),
-}, { additionalProperties: false });
+export const NEW_CONTEXT_PARAMETERS = Type.Object({}, { additionalProperties: false });
 
 export const NEW_CONTEXT_CHECKPOINT_REQUIRED_MESSAGE =
 	"new_context refused: no successful notes checkpoint in this window. "
-	+ "Save the active request, decisions, progress and next steps with notes append_to_file or write_file, then retry. "
-	+ "Pass force=true only when the user explicitly accepts losing unsaved working state.";
+	+ "Save the active request, decisions, progress and next steps with notes append_to_file or write_file, then retry.";
 export interface ContextRemainingDetails {
 	remainingTokens?: number;
 	windowId?: string;
@@ -93,14 +88,14 @@ export function createContextManagementTools(
 	const newContext: ToolDefinition<typeof NEW_CONTEXT_PARAMETERS, NewContextDetails> = {
 		name: "new_context",
 		label: "new_context",
-		description: "Start a new remote Codex context window without generating a conversation summary. Requires a successful notes checkpoint in the current window unless force is set.",
+		description: "Start a new remote Codex context window without generating a conversation summary. Requires a successful notes checkpoint in the current window.",
 		parameters: NEW_CONTEXT_PARAMETERS,
 		promptSnippet: "Start a new remote Codex context window without summarizing history.",
-		promptGuidelines: ["Checkpoint active work in notes before calling new_context; no conversation summary carries over. A successful notes append/write in this window is required unless the user explicitly accepts discarding unsaved state (force=true)."],
+		promptGuidelines: ["Checkpoint active work in notes before calling new_context; no conversation summary carries over. A successful notes append/write in this window is required."],
 		executionMode: "sequential",
-		async execute(_id, params, signal, _update, ctx) {
+		async execute(_id, _params, signal, _update, ctx) {
 			await assertActive(ctx);
-			if (!params.force && !manager.hasNotesCheckpointSinceBoundary(ctx)) {
+			if (!manager.hasNotesCheckpointSinceBoundary(ctx)) {
 				throw new Error(NEW_CONTEXT_CHECKPOINT_REQUIRED_MESSAGE);
 			}
 			const started = await manager.startNewWindow(pi, ctx, {

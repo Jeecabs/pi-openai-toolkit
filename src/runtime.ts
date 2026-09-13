@@ -1,5 +1,10 @@
 import type { Api, Model, ProviderHeaders } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isExactModelAllowed } from "./model-scope";
+import {
+	CODEX_AFFINITY_SCOPE,
+	type CodexAffinity,
+} from "./responses-headers";
 import { RESPONSES_COMPACT_CAPABLE_APIS } from "./types";
 
 const OPENAI_RESPONSES_PATH = "responses";
@@ -24,6 +29,7 @@ export type NativeCompactionFailureReason =
 	| "model-not-found"
 	| "unsupported-api"
 	| "missing-base-url"
+	| "missing-session-id"
 	| "missing-api-key"
 	| "auth-resolution-failed"
 	| "unsupported-payload"
@@ -34,6 +40,8 @@ export type NativeCompactionSupportOptions = {
 	enabled?: boolean;
 	/** Which Responses APIs should use the compact endpoint; defaults to all capable APIs. */
 	responsesApis?: readonly string[];
+	/** Exact provider/model keys whose Responses traffic carries gateway Codex affinity metadata. */
+	codexGatewayModels?: readonly string[];
 };
 
 export type ResponsesSupportOptions = NativeCompactionSupportOptions;
@@ -60,6 +68,8 @@ export type ResponsesRuntime = {
 	 * requests used or the backend treats them as a new conversation.
 	 */
 	sessionId?: string;
+	/** Opt-in gateway Codex routing metadata for synthetic Responses/compact requests. */
+	codexAffinity?: CodexAffinity;
 	currentModel: RuntimeModel;
 };
 
@@ -128,6 +138,19 @@ function normalizeConfiguredApis(values: readonly string[] | undefined): Set<str
 		return new Set(RESPONSES_COMPACT_CAPABLE_APIS);
 	}
 	return new Set(values.map((value) => value.trim()).filter((value) => value.length > 0));
+}
+
+function resolveCodexGatewayAffinity(
+	model: RuntimeModel,
+	gatewayModels: readonly string[] | undefined,
+): CodexAffinity | undefined {
+	if (model.api !== "openai-responses" || !isExactModelAllowed(model, gatewayModels ?? [])) {
+		return undefined;
+	}
+	return {
+		model: model.id,
+		scope: CODEX_AFFINITY_SCOPE,
+	};
 }
 
 /** Parse "provider/model-id" (model ids may themselves contain slashes). */
@@ -329,6 +352,17 @@ async function resolveNativeCompactionEnvironmentForModel(
 		};
 	}
 
+	const codexAffinity = resolveCodexGatewayAffinity(currentModel, options.codexGatewayModels);
+	const sessionId = resolveRuntimeSessionId(ctx);
+	if (codexAffinity && !sessionId) {
+		return {
+			ok: false,
+			reason: "missing-session-id",
+			...descriptor,
+			baseUrl,
+		};
+	}
+
 	if (!auth.apiKey) {
 		return {
 			ok: false,
@@ -351,7 +385,8 @@ async function resolveNativeCompactionEnvironmentForModel(
 			responsesUrl: buildResponsesUrl(baseUrl, descriptor.api),
 			compactPath: buildCompactPath(descriptor.api),
 			compactUrl: buildCompactUrl(baseUrl, descriptor.api),
-			sessionId: resolveRuntimeSessionId(ctx),
+			sessionId,
+			codexAffinity,
 			payload: requestPayload,
 			currentModel,
 		},
@@ -378,6 +413,7 @@ export async function resolveResponsesEnvironment(
 			responsesPath: runtime.responsesPath,
 			responsesUrl: runtime.responsesUrl,
 			sessionId: runtime.sessionId,
+			codexAffinity: runtime.codexAffinity,
 			currentModel: runtime.currentModel,
 		},
 	};

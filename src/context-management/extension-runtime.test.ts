@@ -384,6 +384,51 @@ test("a non-covered gateway model never writes a window boundary or warns on ses
 	expect(notices).toEqual([]);
 });
 
+test("covered gateway traffic aborts when its session transport is unavailable", async () => {
+	const handlers = new Map<string, (event: never, ctx: never) => unknown>();
+	let aborted = false;
+	const pi = {
+		on: (name: string, handler: (event: never, ctx: never) => unknown) => handlers.set(name, handler),
+		registerTool: () => undefined,
+		getAllTools: () => [],
+		getActiveTools: () => [],
+		setActiveTools: () => undefined,
+	} as unknown as ExtensionAPI;
+	const gatewayModel = {
+		provider: "my-gateway",
+		api: "openai-responses",
+		id: "gpt-5.6-luna",
+		baseUrl: "https://newapi.example/v1",
+		contextWindow: 272_000,
+	};
+	const ctx = {
+		...makeContext([], gatewayModel),
+		sessionManager: {
+			getBranch: () => [],
+			getSessionId: () => undefined,
+		},
+		abort: () => { aborted = true; },
+	} as never;
+	extension(pi, {
+		loadConfig: () => ({
+			config: {
+				...DEFAULT_TOOLKIT_CONFIG,
+				compaction: {
+					...DEFAULT_COMPACTION_CONFIG,
+					contextManagement: "remote",
+					gatewayContextModels: ["my-gateway/gpt-5.6-luna"],
+					artifactRoot: "/tmp",
+				},
+			},
+			warnings: [],
+		}),
+	} as never);
+
+	await handlers.get("before_provider_request")?.({ payload: { model: gatewayModel.id, input: [] } } as never, ctx);
+	await handlers.get("before_provider_headers")?.({ headers: {} } as never, ctx);
+	expect(aborted).toBe(true);
+});
+
 test("switching into a covered model mid-session initializes the window lifecycle", async () => {
 	const handlers = new Map<string, (event: never, ctx: never) => unknown>();
 	let active: string[] = ["read"];

@@ -18,6 +18,7 @@ import { loadHistoryNotesThreadHint } from "./context-management/history-notes";
 import { CodexContextWindowManager } from "./context-management/window-manager";
 import { registerContextManagementTools } from "./context-management/tools";
 import { writeDebugArtifact, writeReplayFailureArtifact } from "./debug";
+import { CODEX_GATEWAY_FORWARD_HEADERS } from "./responses-headers";
 import { resolveLatestNativeCompactionEntry } from "./details-store";
 import { runNativeFallbackCompaction } from "./native-fallback";
 import {
@@ -398,6 +399,7 @@ async function handleSessionBeforeCompact(
 		{
 			enabled: config.enabled,
 			responsesApis: config.responsesApis,
+			codexGatewayModels: config.contextManagement === "remote" ? config.gatewayContextModels : [],
 		},
 		config.remoteCompactModel,
 	);
@@ -536,9 +538,15 @@ async function handleContext(
 		}
 
 		// An eligible Codex Remote session is never allowed to fall through to the
-		// older compaction-replay path. Keep its internal markers hidden, but let
-		// Pi's normal request construction handle the inactive session.
+		// older compaction-replay path. Gateway traffic must also fail closed when
+		// its transport capability is unavailable; otherwise Pi could send an
+		// ordinary unscoped request and lose CPA OAuth/session affinity.
 		if (isCodexContextModel(ctx.model, config)) {
+			if (isCodexGatewayModel(ctx.model, config.gatewayContextModels)) {
+				notifyRemoteContextFailure(ctx, "codex-context-unavailable");
+				ctx.abort();
+				return undefined;
+			}
 			const visibleMessages = contextWindows.project(event.messages, "off");
 			return visibleMessages.length === event.messages.length && visibleMessages.every((message, index) => message === event.messages[index])
 				? undefined
@@ -554,6 +562,7 @@ async function handleContext(
 	const resolution = await resolveNativeCompactionEnvironment(ctx, {
 		enabled: config.enabled,
 		responsesApis: config.responsesApis,
+		codexGatewayModels: config.contextManagement === "remote" ? config.gatewayContextModels : [],
 	});
 	if (!resolution.ok) return undefined;
 	const branchEntries = ctx.sessionManager.getBranch();
@@ -601,8 +610,14 @@ async function handleBeforeProviderRequest(
 		}
 	}
 	if (isCodexContextModel(ctx.model, config)) {
-		// Keep Codex Remote mutually exclusive with the legacy replay
-		// pipeline when authentication or tool ownership is unavailable.
+		// Keep Codex Remote mutually exclusive with the legacy replay pipeline
+		// when authentication or tool ownership is unavailable. Gateway traffic
+		// cannot continue as an ordinary Responses request because that would
+		// silently lose the required CPA session/account selection.
+		if (isCodexGatewayModel(ctx.model, config.gatewayContextModels)) {
+			notifyRemoteContextFailure(ctx, "codex-context-unavailable");
+			ctx.abort();
+		}
 		return undefined;
 	}
 
@@ -611,6 +626,7 @@ async function handleBeforeProviderRequest(
 		{
 			enabled: config.enabled,
 			responsesApis: config.responsesApis,
+			codexGatewayModels: config.contextManagement === "remote" ? config.gatewayContextModels : [],
 		},
 		event.payload,
 	);
@@ -877,7 +893,14 @@ export default function registerCompactionExtension(
 	pi.on("before_provider_headers", async (event, ctx) => {
 		const config = dependencies.loadConfig().config.compaction;
 		if (!isCodexContextModel(ctx.model, config)) return;
-		if (!(await remoteContextActive(ctx, config))) return;
+		const active = await remoteContextActive(ctx, config);
+		if (!active) {
+			if (isCodexGatewayModel(ctx.model, config.gatewayContextModels)) {
+				notifyRemoteContextFailure(ctx, "codex-context-unavailable");
+				ctx.abort();
+			}
+			return;
+		}
 		const provider = await resolveCodexContextProvider(ctx, ctx.model, config.gatewayContextModels);
 		if (provider.ok && provider.provider.kind === "codex-gateway") {
 			const sessionId = getSessionId(ctx);
@@ -885,6 +908,10 @@ export default function registerCompactionExtension(
 				sessionId,
 				clientRequestId: sessionId,
 			});
+			const allowedGatewayHeaders = new Set<string>(CODEX_GATEWAY_FORWARD_HEADERS);
+			for (const existing of Object.keys(event.headers)) {
+				if (!allowedGatewayHeaders.has(existing.toLowerCase())) delete event.headers[existing];
+			}
 			for (const name of [
 				"authorization",
 				"originator",
@@ -901,15 +928,13 @@ export default function registerCompactionExtension(
 				const value = gatewayHeaders.get(name);
 				if (value) event.headers[name] = value;
 			}
-			for (const existing of Object.keys(event.headers)) {
-				if (["cookie", "chatgpt-account-id", "x-api-key"].includes(existing.toLowerCase())) delete event.headers[existing];
-			}
 		}
 		contextWindows.rewriteHeaders(event.headers, ctx);
 	});
-	pi.on("message_end", (event, ctx) => {
+	pi.on("message_end", async (event, ctx) => {
 		const config = dependencies.loadConfig().config.compaction;
 		if (!isCodexContextModel(ctx.model, config) || !tools.isRegistered) return undefined;
+		if (!(await remoteContextActive(ctx, config))) return undefined;
 		const message = routeContextNamespaceToolMessage(event.message);
 		return message === event.message ? undefined : { message };
 	});

@@ -456,6 +456,8 @@ test("gateway Remote Context headers preserve session affinity and strip inherit
 		cookie: "stale",
 		"chatgpt-account-id": "stale",
 		"x-api-key": "stale",
+		"x-management-key": "stale",
+		traceparent: "stale",
 		"session-id": "stale",
 		"x-client-request-id": "stale",
 	};
@@ -469,6 +471,8 @@ test("gateway Remote Context headers preserve session affinity and strip inherit
 	expect(headers.cookie).toBeUndefined();
 	expect(headers["chatgpt-account-id"]).toBeUndefined();
 	expect(headers["x-api-key"]).toBeUndefined();
+	expect(headers["x-management-key"]).toBeUndefined();
+	expect(headers.traceparent).toBeUndefined();
 });
 
 test("manual /compact preserves tool/result ordering + assistant phases and persists the native window", async () => {

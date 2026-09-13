@@ -31,8 +31,13 @@ import {
 	isNonEmptyString,
 	isRecord,
 	isContextWindowCompactionDetails,
+	type NotesCheckpointReceipt,
 } from "./types";
-import { encodeEncryptedOutputForContext, loadHistoryNotesThreadHint } from "./history-notes";
+import {
+	encodeEncryptedOutputForContext,
+	isSuccessfulHistoryNotesToolResult,
+	loadHistoryNotesThreadHint,
+} from "./history-notes";
 import { rewriteContextNamespaceTools } from "./namespace-tools";
 
 interface StartContextWindowOptions {
@@ -171,6 +176,9 @@ export class CodexContextWindowManager {
 		this.rolloverPending = true;
 		try {
 			const current = this.identity;
+			const checkpoint = current
+				? findLatestNotesCheckpointSinceBoundary(ctx.sessionManager.getBranch(), this.sessionId)
+				: undefined;
 			let threadHint: string | undefined;
 			if (current) {
 				try {
@@ -189,7 +197,7 @@ export class CodexContextWindowManager {
 					windowNumber: current.windowNumber + 1,
 				}
 				: { firstWindowId: currentWindowId, currentWindowId, windowNumber: 0 };
-			this.sendWindowMessage(pi, ctx, next, options, threadHint);
+			this.sendWindowMessage(pi, ctx, next, options, threadHint, checkpoint);
 			return true;
 		} catch (error) {
 			this.rolloverPending = false;
@@ -289,10 +297,11 @@ export class CodexContextWindowManager {
 		identity: ContextWindowIdentity,
 		options: StartContextWindowOptions,
 		threadHint?: string,
+		checkpoint?: NotesCheckpointReceipt,
 	): void {
 		sendContextWindowMessage(
 			pi,
-			renderContextWindowMessage(identity, threadHint),
+			renderContextWindowMessage(identity, threadHint, checkpoint),
 			"window",
 			identity,
 			{ triggerTurn: options.triggerTurn, sessionId: ctx.sessionManager.getSessionId() },
@@ -329,20 +338,7 @@ export function hasAssistantUsageSinceWindowBoundary(
 	entries: readonly SessionEntry[],
 	sessionId?: string,
 ): boolean {
-	let boundaryIndex = -1;
-	for (let index = entries.length - 1; index >= 0; index -= 1) {
-		const entry = entries[index]!;
-		if (entry.type !== "custom_message" || entry.customType !== CODEX_CONTEXT_WINDOW_MESSAGE_TYPE) continue;
-		if (!couldBelongToSession(entry.details, sessionId)) continue;
-		if (!isCodexContextManagementMessageDetails(entry.details)) {
-			throw new Error("Malformed persisted Codex context-window message");
-		}
-		if (!matchesSession(entry.details.sessionId, sessionId)) continue;
-		if (entry.details.contextManagement.kind === "window") {
-			boundaryIndex = index;
-			break;
-		}
-	}
+	const boundaryIndex = findLatestWindowBoundaryIndex(entries, sessionId);
 	if (boundaryIndex < 0) return false;
 	for (let index = boundaryIndex + 1; index < entries.length; index += 1) {
 		const entry = entries[index]!;
@@ -363,6 +359,46 @@ export function hasAssistantUsageSinceWindowBoundary(
 }
 
 /**
+ * Return the most recent successful notes write after the latest window
+ * boundary. The receipt is derived from persisted session entries so it
+ * survives restarts and can be used for an explicit rollover handoff.
+ */
+export function findLatestNotesCheckpointSinceBoundary(
+	entries: readonly SessionEntry[],
+	sessionId?: string,
+): NotesCheckpointReceipt | undefined {
+	const boundaryIndex = findLatestWindowBoundaryIndex(entries, sessionId);
+	if (boundaryIndex < 0) return undefined;
+	const checkpointCalls = new Map<string, NotesCheckpointReceipt>();
+	let latest: NotesCheckpointReceipt | undefined;
+	for (let index = boundaryIndex + 1; index < entries.length; index += 1) {
+		const entry = entries[index]!;
+		if (entry.type !== "message") continue;
+		const message = entry.message;
+		if (message.role === "assistant") {
+			const parts = Array.isArray(message.content) ? message.content : [];
+			for (const part of parts) {
+				if (!isRecord(part) || part.type !== "toolCall" || part.name !== "notes") continue;
+				const args = isRecord(part.arguments) ? part.arguments : undefined;
+				const action = typeof args?.action === "string" ? args.action : "";
+				const path = isNonEmptyString(args?.path) ? args.path : undefined;
+				if (isNonEmptyString(part.id) && path !== undefined && NOTES_CHECKPOINT_ACTIONS.has(action)) {
+					checkpointCalls.set(part.id, { path, toolCallId: part.id });
+				}
+			}
+			continue;
+		}
+		if (message.role !== "toolResult" || message.toolName !== "notes") continue;
+		const receipt = checkpointCalls.get(message.toolCallId);
+		if (!receipt) continue;
+		checkpointCalls.delete(message.toolCallId);
+		if (message.isError !== false || !isSuccessfulHistoryNotesToolResult(message.details)) continue;
+		latest = receipt;
+	}
+	return latest;
+}
+
+/**
  * Whether the branch contains a successful notes append/write result after the
  * latest window boundary. Reads and failed writes never count as checkpoints.
  */
@@ -370,7 +406,13 @@ export function findNotesCheckpointSinceBoundary(
 	entries: readonly SessionEntry[],
 	sessionId?: string,
 ): boolean {
-	let boundaryIndex = -1;
+	return findLatestNotesCheckpointSinceBoundary(entries, sessionId) !== undefined;
+}
+
+function findLatestWindowBoundaryIndex(
+	entries: readonly SessionEntry[],
+	sessionId?: string,
+): number {
 	for (let index = entries.length - 1; index >= 0; index -= 1) {
 		const entry = entries[index]!;
 		if (entry.type !== "custom_message" || entry.customType !== CODEX_CONTEXT_WINDOW_MESSAGE_TYPE) continue;
@@ -379,42 +421,9 @@ export function findNotesCheckpointSinceBoundary(
 			throw new Error("Malformed persisted Codex context-window message");
 		}
 		if (!matchesSession(entry.details.sessionId, sessionId)) continue;
-		if (entry.details.contextManagement.kind === "window") {
-			boundaryIndex = index;
-			break;
-		}
+		if (entry.details.contextManagement.kind === "window") return index;
 	}
-	if (boundaryIndex < 0) return false;
-	const checkpointCalls = new Set<string>();
-	for (let index = boundaryIndex + 1; index < entries.length; index += 1) {
-		const entry = entries[index]!;
-		if (entry.type !== "message") continue;
-		const message = entry.message;
-		if (message.role === "assistant") {
-			const parts = Array.isArray(message.content) ? message.content : [];
-			for (const part of parts) {
-				if (!isRecord(part) || part.type !== "toolCall") continue;
-				// Match by call id only; the provider-side namespace rewrite never
-				// affects the names persisted in the Pi session branch.
-				if (part.name !== "notes") continue;
-				const args = isRecord(part.arguments) ? part.arguments : undefined;
-				const action = typeof args?.action === "string" ? args.action : "";
-				if (typeof part.id === "string" && NOTES_CHECKPOINT_ACTIONS.has(action)) {
-					checkpointCalls.add(part.id);
-				}
-			}
-			continue;
-		}
-		if (message.role === "toolResult" && checkpointCalls.has(message.toolCallId)) {
-			if (message.isError) {
-				checkpointCalls.delete(message.toolCallId);
-				continue;
-			}
-			const details = message.details;
-			if (isRecord(details) && isRecord(details.codexHistoryNotes)) return true;
-		}
-	}
-	return false;
+	return -1;
 }
 
 export function findLatestWindowBoundaryEntry(

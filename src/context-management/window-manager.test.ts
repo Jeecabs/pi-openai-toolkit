@@ -1,11 +1,49 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import { CodexContextWindowManager, findNotesCheckpointSinceBoundary } from "./window-manager";
+import {
+	loadHistoryNotesThreadHint,
+} from "./history-notes";
+import {
+	CodexContextWindowManager,
+	findLatestNotesCheckpointSinceBoundary,
+	findNotesCheckpointSinceBoundary,
+} from "./window-manager";
 import { CODEX_CONTEXT_WINDOW_MESSAGE_TYPE, CONTEXT_WINDOW_COMPACTION_SUMMARY } from "./messages";
+
+const originalFetch = globalThis.fetch;
+
+afterEach(() => {
+	globalThis.fetch = originalFetch;
+});
 
 function fakeContext(branch: readonly unknown[] = []): never {
 	return {
 		model: { contextWindow: 100_000 },
+		sessionManager: {
+			getBranch: () => branch,
+			getSessionId: () => "session-1",
+		},
+		getContextUsage: () => undefined,
+	} as never;
+}
+
+function fakeHistoryContext(branch: readonly unknown[] = []): never {
+	return {
+		model: {
+			provider: "openai-codex",
+			api: "openai-codex-responses",
+			id: "gpt-5.5",
+			baseUrl: "https://chatgpt.com/backend-api",
+			contextWindow: 100_000,
+		},
+		modelRegistry: {
+			getApiKeyAndHeaders: async () => ({
+				ok: true,
+				apiKey: "token",
+				headers: { "chatgpt-account-id": "account" },
+				baseUrl: "https://chatgpt.com/backend-api",
+			}),
+		},
 		sessionManager: {
 			getBranch: () => branch,
 			getSessionId: () => "session-1",
@@ -245,10 +283,10 @@ function assistantUsage(tokens: number) {
 	} as never;
 }
 
-function notesCall(id: string, action: string) {
+function notesCall(id: string, action: string, path = "/checkpoint.md") {
 	return {
 		type: "message", id: `entry-${id}`, parentId: null, timestamp: "2026-09-07T00:00:01.000Z",
-		message: { role: "assistant", content: [{ type: "toolCall", id, name: "notes", arguments: { action } }] },
+		message: { role: "assistant", content: [{ type: "toolCall", id, name: "notes", arguments: { action, path } }] },
 	} as never;
 }
 function notesResult(id: string, ok: boolean) {
@@ -258,6 +296,17 @@ function notesResult(id: string, ok: boolean) {
 			role: "toolResult", toolCallId: id, toolName: "notes", isError: !ok,
 			content: [{ type: "text", text: ok ? "done" : "boom" }],
 			...(ok ? { details: { codexHistoryNotes: { output: "done" } } } : {}),
+		},
+	} as never;
+}
+function notesResultWithDetails(id: string, result: Record<string, unknown>, isError: boolean | undefined) {
+	return {
+		type: "message", id: `entry-res-${id}`, parentId: null, timestamp: "2026-09-07T00:00:02.000Z",
+		message: {
+			role: "toolResult", toolCallId: id, toolName: "notes",
+			...(isError === undefined ? {} : { isError }),
+			content: [{ type: "text", text: "backend response" }],
+			details: { codexHistoryNotes: result },
 		},
 	} as never;
 }
@@ -283,6 +332,35 @@ test("notes checkpoint scan requires a success after the latest boundary", () =>
 	], "session-1")).toBe(false);
 });
 
+test("notes checkpoint scan rejects semantic failures and returns the latest successful receipt", () => {
+	const entries = [
+		windowMarker("w1"),
+		notesCall("tc-rejected", "append_to_file", "/rejected.md"),
+		notesResultWithDetails("tc-rejected", { ok: false, output: "write rejected" }, false),
+		notesCall("tc-success", "write_file", "/active-task.md"),
+		notesResultWithDetails("tc-success", { success: true, output: "done" }, false),
+	] as never[];
+	expect(findNotesCheckpointSinceBoundary(entries, "session-1")).toBe(true);
+	expect(findLatestNotesCheckpointSinceBoundary(entries, "session-1")).toEqual({
+		path: "/active-task.md",
+		toolCallId: "tc-success",
+	});
+
+	const rejectedOnly = [
+		windowMarker("w1"),
+		notesCall("tc-rejected", "append_to_file", "/rejected.md"),
+		notesResultWithDetails("tc-rejected", { ok: false }, false),
+	] as never[];
+	expect(findNotesCheckpointSinceBoundary(rejectedOnly, "session-1")).toBe(false);
+
+	const missingErrorFlag = [
+		windowMarker("w1"),
+		notesCall("tc-missing-error", "write_file"),
+		notesResultWithDetails("tc-missing-error", { output: "done" }, undefined),
+	] as never[];
+	expect(findNotesCheckpointSinceBoundary(missingErrorFlag, "session-1")).toBe(false);
+});
+
 test("notes checkpoint scan tracks the latest boundary across rollovers", () => {
 	const entries = [
 		windowMarker("w1"),
@@ -291,6 +369,40 @@ test("notes checkpoint scan tracks the latest boundary across rollovers", () => 
 	] as never[];
 	// The old window's checkpoint must not authorize the new window's rollover.
 	expect(findNotesCheckpointSinceBoundary(entries, "session-1")).toBe(false);
+});
+
+test("rollover carries a checkpoint receipt when the thread hint is unavailable", async () => {
+	const sent: Array<Record<string, unknown>> = [];
+	const entries = [
+		windowMarker("w1"),
+		notesCall("tc-a", "write_file", "/active-task.md"), notesResult("tc-a", true),
+	] as never[];
+	const manager = new CodexContextWindowManager(async () => {
+		throw new Error("thread hint unavailable");
+	});
+	manager.restore(entries, "session-1");
+	const ctx = fakeContext(entries);
+	await expect(manager.startNewWindow(fakePi(sent), ctx, { triggerTurn: true, trimPreviousWindow: true })).resolves.toBe(true);
+	const content = String(sent[0]?.content);
+	expect(content).toContain("Checkpoint successfully written:");
+	expect(content).toContain(JSON.stringify("/active-task.md"));
+	expect(content).toContain("before doing anything else");
+});
+
+test("rollover carries a checkpoint receipt when thread hint response is rejected", async () => {
+	const sent: Array<Record<string, unknown>> = [];
+	const entries = [
+		windowMarker("w1"),
+		notesCall("tc-a", "write_file", "/active-task.md"), notesResult("tc-a", true),
+	] as never[];
+	globalThis.fetch = async () => new Response(JSON.stringify({ success: false, text: "rejected hint" }), { status: 200 });
+	const manager = new CodexContextWindowManager((ctx, signal) => loadHistoryNotesThreadHint(ctx, signal));
+	manager.restore(entries, "session-1");
+	const ctx = fakeHistoryContext(entries);
+	await expect(manager.startNewWindow(fakePi(sent), ctx, { triggerTurn: true, trimPreviousWindow: true })).resolves.toBe(true);
+	const content = String(sent[0]?.content);
+	expect(content).toContain("Checkpoint successfully written:");
+	expect(content).toContain(JSON.stringify("/active-task.md"));
 });
 
 test("manager exposes the checkpoint gate for the current session branch", () => {

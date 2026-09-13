@@ -11,6 +11,7 @@ import {
 	type ContextManagementMessageKind,
 	type ContextWindowCompactionDetails,
 	type ContextWindowIdentity,
+	type NotesCheckpointReceipt,
 	isCodexContextManagementMessageDetails,
 	isContextWindowCompactionDetails,
 } from "./types";
@@ -34,12 +35,13 @@ export const CONTEXT_WINDOW_COMPACTION_SUMMARY =
 	"[Pi Codex context-window boundary; no conversation summary was generated.]";
 
 const CONTEXT_WINDOW_GUIDANCE = `<context_window_guidance>
-Checkpoint the active request, known history IDs, decisions, progress, learnings and next steps in notes before new_context; no summary carries over. After rollover, read hinted notes. Use history only for a missing detail.
+Checkpoint the active request, known history IDs, decisions, progress, learnings and next steps in notes before new_context; no summary carries over. After rollover, read the checkpoint receipt note first when present; use a thread hint only as supplemental guidance. Use history only for a missing detail.
 </context_window_guidance>`;
 
 export function renderContextWindowMessage(
 	identity: ContextWindowIdentity,
 	threadHint?: string,
+	checkpoint?: NotesCheckpointReceipt,
 ): string {
 	const lines = [
 		"<context_window>",
@@ -48,6 +50,10 @@ export function renderContextWindowMessage(
 		`Current context window id: ${identity.currentWindowId}`,
 	];
 	if (identity.previousWindowId) lines.push(`Previous context window id: ${identity.previousWindowId}`);
+	if (checkpoint) {
+		lines.push("Checkpoint successfully written:");
+		lines.push(`  Read this note before doing anything else with notes action "read_file": ${JSON.stringify(checkpoint.path)}`);
+	}
 	if (threadHint) lines.push(threadHint);
 	lines.push("</context_window>");
 	return `${CONTEXT_WINDOW_GUIDANCE}\n\n${lines.join("\n")}`;
