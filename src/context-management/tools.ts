@@ -170,12 +170,9 @@ export class ContextManagementToolController {
 		parameters: unknown;
 		promptGuidelines?: string[];
 	}>();
-	private readonly ownedNames = new Set<string>();
-	private readonly baselineNames = new Set<string>();
 	private registered = false;
 	private registrationChecked = false;
 	private registrationValid = false;
-	private baselineCaptured = false;
 
 	constructor(private readonly pi: ExtensionAPI) {}
 
@@ -233,44 +230,22 @@ export class ContextManagementToolController {
 		} catch {
 			this.registrationValid = false;
 		}
-		if (!this.registrationValid) this.ownedNames.clear();
 		return this.registrationValid;
 	}
 
-	private captureBaseline(): boolean {
-		if (this.baselineCaptured) return true;
-		try {
-			const api = this.pi as ExtensionAPI & { getActiveTools?: () => string[] };
-			if (typeof api.getActiveTools !== "function") return false;
-			this.baselineNames.clear();
-			for (const name of api.getActiveTools()) this.baselineNames.add(name);
-			this.baselineCaptured = true;
-			return true;
-		} catch {
-			return false;
-		}
-	}
-
 	sync(active: boolean): boolean {
-		if (!this.verifyRegistration() || !this.captureBaseline()) return false;
+		if (!this.verifyRegistration()) return false;
 		const api = this.pi as ExtensionAPI & { getActiveTools?: () => string[]; setActiveTools?: (names: string[]) => void };
 		if (typeof api.getActiveTools !== "function" || typeof api.setActiveTools !== "function") return false;
 		try {
 			const current = api.getActiveTools();
-			if (active) {
-				const next = [...current];
-				for (const name of this.registeredNames) {
-					if (!next.includes(name) && !this.baselineNames.has(name)) {
-						next.push(name);
-						this.ownedNames.add(name);
-					}
-				}
-				if (next.length !== current.length) api.setActiveTools(next);
-				return true;
-			}
-			const next = current.filter((name) => !this.ownedNames.has(name));
+			// Pi may activate a newly registered tool before the first sync. Once
+			// registration is verified, every registered name belongs to this
+			// controller: active models get all four, inactive models get none.
+			const next = active
+				? [...current, ...[...this.registeredNames].filter((name) => !current.includes(name))]
+				: current.filter((name) => !this.registeredNames.has(name));
 			if (next.length !== current.length) api.setActiveTools(next);
-			this.ownedNames.clear();
 			return true;
 		} catch {
 			return false;
@@ -279,8 +254,6 @@ export class ContextManagementToolController {
 
 	reset(): void {
 		this.sync(false);
-		this.baselineNames.clear();
-		this.baselineCaptured = false;
 	}
 	get isRegistered(): boolean { return this.registrationValid; }
 }

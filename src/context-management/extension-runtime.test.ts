@@ -68,6 +68,35 @@ test("model selection evaluates the selected model rather than stale ctx.model",
 	expect(active).toEqual(["read", "new_context", "get_context_remaining", "history", "notes"]);
 });
 
+test("switching to an unsupported model removes context tools already active at startup", async () => {
+	const handlers = new Map<string, (event: never, ctx: never) => unknown>();
+	const registeredTools: Array<{ name: string; description: string; parameters: unknown; promptGuidelines?: string[] }> = [];
+	let active = ["read", "new_context", "get_context_remaining", "history", "notes"];
+	const pi = {
+		on: (name: string, handler: (event: never, ctx: never) => unknown) => handlers.set(name, handler),
+		registerTool: (tool: { name: string; description: string; parameters: unknown; promptGuidelines?: string[] }) => registeredTools.push(tool),
+		getAllTools: () => registeredTools,
+		getActiveTools: () => active,
+		setActiveTools: (names: string[]) => { active = names; },
+		sendMessage: () => true,
+	} as unknown as ExtensionAPI;
+	const unsupported = { ...model, provider: "openai", api: "openai-responses" };
+	extension(pi, {
+		loadConfig: () => ({
+			config: {
+				...DEFAULT_TOOLKIT_CONFIG,
+				compaction: { ...DEFAULT_COMPACTION_CONFIG, contextManagement: "remote", artifactRoot: "/tmp" },
+			},
+			warnings: [],
+		}),
+	} as never);
+
+	await handlers.get("session_start")?.({} as never, makeContext([], model));
+	await handlers.get("model_select")?.({ model: unsupported, previousModel: model, source: "set" } as never, makeContext([], model));
+
+	expect(active).toEqual(["read"]);
+});
+
 test("a context-tool name conflict disables the Remote runtime instead of rewriting requests", async () => {
 	const handlers = new Map<string, (event: never, ctx: never) => unknown>();
 	let active = ["read"];
