@@ -27,6 +27,7 @@ import {
 	serializeLiveTailToResponsesInput,
 } from "./payload-rewrite";
 import { getCompactionRequestExtras, rememberRequestContext } from "./request-context-cache";
+import { resolveWebSearchRoute } from "./web-search/types";
 import { executeRemoteV2Compaction } from "./remote-v2-client";
 import {
 	resolveNativeCompactionEnvironment,
@@ -660,13 +661,20 @@ async function handleBeforeProviderRequest(
 	// synthetic compact request using the active consumer's effective runtime identity.
 	// This hook runs before the separate Web Search transform, so injected native search
 	// tools are not copied into remote_compaction_v2.
-	rememberRequestContext(payload, {
-		provider: runtime.provider,
-		api: runtime.api,
-		model: runtime.model,
-		baseUrl: runtime.baseUrl,
-		sessionId: getSessionId(ctx),
-	});
+	const webSearchRoute = resolveWebSearchRoute({ model: ctx.model, config: toolkitConfig.webSearch });
+	rememberRequestContext(
+		payload,
+		{
+			provider: runtime.provider,
+			api: runtime.api,
+			model: runtime.model,
+			baseUrl: runtime.baseUrl,
+			sessionId: getSessionId(ctx),
+		},
+		{
+			excludeWebSearchTools: webSearchRoute.route === "standalone-alpha",
+		},
+	);
 
 	const branchEntries = ctx.sessionManager.getBranch();
 	const latestNativeCompaction = resolveLatestNativeCompactionEntry(branchEntries, {

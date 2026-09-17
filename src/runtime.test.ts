@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { resolveNativeCompactionEnvironment } from "./runtime";
+import { buildAlphaSearchUrl, resolveNativeCompactionEnvironment } from "./runtime";
 
 type TestModel = {
 	provider: string;
@@ -75,5 +75,19 @@ test("allowlisted gateway runtime fails closed without a session identity", asyn
 	);
 
 	expect(result).toMatchObject({ ok: false, reason: "missing-session-id" });
+});
+
+test("buildAlphaSearchUrl appends provider-relative alpha/search exactly once", () => {
+	expect(buildAlphaSearchUrl("https://gateway.example/v1")).toBe("https://gateway.example/v1/alpha/search");
+	expect(buildAlphaSearchUrl("https://gateway.example/v1/")).toBe("https://gateway.example/v1/alpha/search");
+	expect(buildAlphaSearchUrl("https://gateway.example/v1/alpha/search")).toBe("https://gateway.example/v1/alpha/search");
+	expect(buildAlphaSearchUrl("https://gateway.example/v1/alpha/search/")).toBe("https://gateway.example/v1/alpha/search");
+	expect(buildAlphaSearchUrl("https://gateway.example/v1/responses")).toBeUndefined();
+	expect(buildAlphaSearchUrl("https://gateway.example/v1/codex/responses")).toBeUndefined();
+	expect(buildAlphaSearchUrl("https://gateway.example/v1/responses/alpha/search")).toBeUndefined();
+	expect(buildAlphaSearchUrl("https://gateway.example/v1/codex/responses/alpha/search")).toBeUndefined();
+	expect(buildAlphaSearchUrl("https://user:password@gateway.example/v1")).toBeUndefined();
+	expect(buildAlphaSearchUrl("ftp://gateway.example/v1")).toBeUndefined();
+	expect(buildAlphaSearchUrl("https://gateway.example/v1?token=secret")).toBeUndefined();
 });
 

@@ -132,4 +132,20 @@ describe("Compaction and Web Search integration", () => {
 		expect(finalPayload.tools).toEqual([{ type: "web_search" }]);
 		expect(finalPayload.include).toEqual([WEB_SEARCH_SOURCE_INCLUDE]);
 	});
+
+	test("standalone-alpha active tools do not enter synthetic compaction extras", () => {
+		const payload = {
+			model: "gpt-5.5",
+			input: [{ role: "user", content: "latest news" }],
+			tools: [
+				{ type: "function", name: "web.run" },
+				{ type: "function", name: "read_file" },
+				{ type: "function", name: "web_search" },
+				{ type: "web_search" },
+			],
+		};
+		rememberRequestContext(payload, identity, { excludeWebSearchTools: true });
+
+		expect(getCompactionRequestExtras(identity)?.tools).toEqual([{ type: "function", name: "read_file" }]);
+	});
 });

@@ -35,6 +35,7 @@ import {
 	type NativeFallbackConfig,
 	type ToolkitConfig,
 	type WebSearchConfig,
+	type WebSearchRoute,
 } from "./types";
 import { MAX_IMAGE_MODEL_ID_CHARS } from "./image-generation/types";
 
@@ -59,7 +60,7 @@ const COMPACTION_FIELDS = new Set([
 	"artifactRoot",
 ]);
 const NATIVE_FALLBACK_FIELDS = new Set(["enabled", "model", "thinkingLevel"]);
-const WEB_SEARCH_FIELDS = new Set(["enabled", "models"]);
+const WEB_SEARCH_FIELDS = new Set(["enabled", "models", "defaultRoute", "routes"]);
 const IMAGE_GENERATION_FIELDS = new Set(["enabled", "models"]);
 const AUTO_MODE_FIELDS = new Set([
 	"enabled",
@@ -231,6 +232,53 @@ function toImageGenerationModels(value: unknown, fieldPath: string, warnings: st
 	return models;
 }
 
+function toWebSearchRoute(
+	value: unknown,
+	fieldPath: string,
+	warnings: string[],
+): WebSearchRoute | undefined {
+	if (value === undefined) return undefined;
+	if (value === "local" || value === "hosted" || value === "standalone-alpha") {
+		return value;
+	}
+	warnings.push(`Ignoring ${fieldPath}: expected one of local, hosted, standalone-alpha.`);
+	return undefined;
+}
+
+function isExactWebSearchModelKey(value: string): boolean {
+	const trimmed = value.trim();
+	const separatorIndex = trimmed.indexOf("/");
+	if (separatorIndex <= 0 || separatorIndex >= trimmed.length - 1) return false;
+	if (/[\s*?\[\]{}]/.test(trimmed)) return false;
+	const provider = trimmed.slice(0, separatorIndex);
+	const modelId = trimmed.slice(separatorIndex + 1);
+	return provider.length > 0 && modelId.length > 0;
+}
+
+function toWebSearchRoutes(
+	value: unknown,
+	fieldPath: string,
+	warnings: string[],
+): Record<string, WebSearchRoute> | undefined {
+	if (value === undefined) return undefined;
+	if (!isRecord(value)) {
+		warnings.push(`Ignoring ${fieldPath}: expected a JSON object.`);
+		return undefined;
+	}
+
+	const routes: Record<string, WebSearchRoute> = {};
+	for (const [rawKey, rawRoute] of Object.entries(value)) {
+		const key = rawKey.trim();
+		if (!isExactWebSearchModelKey(key)) {
+			warnings.push(`Ignoring ${fieldPath}.${rawKey}: expected an exact "provider/model-id" key.`);
+			continue;
+		}
+		const route = toWebSearchRoute(rawRoute, `${fieldPath}.${rawKey}`, warnings);
+		if (route !== undefined) routes[key] = route;
+	}
+	return routes;
+}
+
 function toAutoModeGate(value: unknown, fieldPath: string, warnings: string[]): AutoModeGate | undefined {
 	if (value === undefined) return undefined;
 	if (value === "side-effect" || value === "all") return value;
@@ -264,6 +312,12 @@ function cloneDefaults(): ToolkitConfig {
 		webSearch: {
 			...DEFAULT_WEB_SEARCH_CONFIG,
 			models: [...DEFAULT_WEB_SEARCH_CONFIG.models],
+			...(DEFAULT_WEB_SEARCH_CONFIG.defaultRoute
+				? { defaultRoute: DEFAULT_WEB_SEARCH_CONFIG.defaultRoute }
+				: {}),
+			...(DEFAULT_WEB_SEARCH_CONFIG.routes
+				? { routes: { ...DEFAULT_WEB_SEARCH_CONFIG.routes } }
+				: {}),
 		},
 		imageGeneration: {
 			...DEFAULT_IMAGE_GENERATION_CONFIG,
@@ -392,6 +446,31 @@ function applyWebSearchConfig(
 	const models = toStringList(raw.models, "webSearch.models", warnings);
 	if (models !== undefined) {
 		resolved.models = models;
+	}
+
+	const defaultRoute = toWebSearchRoute(raw.defaultRoute, "webSearch.defaultRoute", warnings);
+	if (defaultRoute !== undefined) {
+		resolved.defaultRoute = defaultRoute;
+	}
+
+	const routes = toWebSearchRoutes(raw.routes, "webSearch.routes", warnings);
+	if (routes !== undefined) {
+		resolved.routes = routes;
+	}
+
+	if (defaultRoute !== undefined && resolved.models.length > 0) {
+		warnings.push(
+			"webSearch.defaultRoute overrides legacy webSearch.models for models without an exact webSearch.routes entry.",
+		);
+	}
+	if (routes !== undefined) {
+		for (const key of Object.keys(routes)) {
+			if (resolved.models.includes(key)) {
+				warnings.push(
+					`webSearch.routes.${key} overrides the legacy webSearch.models entry for the same exact model.`,
+				);
+			}
+		}
 	}
 }
 

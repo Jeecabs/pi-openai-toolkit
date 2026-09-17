@@ -99,10 +99,16 @@ export type CompactionConfig = {
 	artifactRoot: string;
 };
 
+export type WebSearchRoute = "local" | "hosted" | "standalone-alpha";
+
 export type WebSearchConfig = {
 	enabled: boolean;
 	/** Exact provider/model keys allowed to use toolkit-native Web Search. */
 	models: string[];
+	/** Explicit route for every model not matched by `routes`. */
+	defaultRoute?: WebSearchRoute;
+	/** Exact `provider/model-id` overrides; no globs or fuzzy matching. */
+	routes?: Record<string, WebSearchRoute>;
 };
 
 export type ImageGenerationConfig = {

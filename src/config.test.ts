@@ -479,3 +479,58 @@ test("retired autoCompaction configuration is ignored without rewriting user set
 	expect(loaded.warnings).toEqual(["Ignoring compaction.autoCompaction: unknown field."]);
 	expect(fs.readFileSync(configPath, "utf8")).toBe(content);
 });
+
+test("webSearch routes parse with exact precedence fields and migration warnings", () => {
+	const configPath = writeTempConfig(
+		JSON.stringify({
+			webSearch: {
+				models: [" provider/model "],
+				defaultRoute: "hosted",
+				routes: {
+					" provider/model ": "local",
+					"uwoacrimson/gpt-6-astra": "standalone-alpha",
+				},
+			},
+		}),
+	);
+	const loaded = loadToolkitConfig(configPath);
+
+	expect(loaded.config.webSearch).toEqual({
+		enabled: true,
+		models: ["provider/model"],
+		defaultRoute: "hosted",
+		routes: {
+			"provider/model": "local",
+			"uwoacrimson/gpt-6-astra": "standalone-alpha",
+		},
+	});
+	expect(loaded.warnings).toEqual([
+		"webSearch.defaultRoute overrides legacy webSearch.models for models without an exact webSearch.routes entry.",
+		"webSearch.routes.provider/model overrides the legacy webSearch.models entry for the same exact model.",
+	]);
+});
+
+test("webSearch route fields reject malformed values without guessing a route", () => {
+	const configPath = writeTempConfig(
+		JSON.stringify({
+			webSearch: {
+				defaultRoute: "remote",
+				routes: {
+					bad: "local",
+					"provider/*": "hosted",
+					"provider/model": "remote",
+				},
+			},
+		}),
+	);
+	const loaded = loadToolkitConfig(configPath);
+
+	expect(loaded.config.webSearch.defaultRoute).toBeUndefined();
+	expect(loaded.config.webSearch.routes).toEqual({});
+	expect(loaded.warnings).toEqual([
+		"Ignoring webSearch.defaultRoute: expected one of local, hosted, standalone-alpha.",
+		"Ignoring webSearch.routes.bad: expected an exact \"provider/model-id\" key.",
+		"Ignoring webSearch.routes.provider/*: expected an exact \"provider/model-id\" key.",
+		"Ignoring webSearch.routes.provider/model: expected one of local, hosted, standalone-alpha.",
+	]);
+});

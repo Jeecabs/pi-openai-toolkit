@@ -11,6 +11,7 @@ const OPENAI_RESPONSES_PATH = "responses";
 const CODEX_RESPONSES_PATH = "codex/responses";
 const OPENAI_COMPACT_PATH = "responses/compact";
 const CODEX_COMPACT_PATH = "codex/responses/compact";
+const ALPHA_SEARCH_PATH = "alpha/search";
 
 export type ResponsesApi = (typeof RESPONSES_COMPACT_CAPABLE_APIS)[number];
 
@@ -213,6 +214,57 @@ export function buildCompactUrl(baseUrl: string, api: ResponsesCompactApi): stri
 
 export function buildCompactPath(api: ResponsesCompactApi): string {
 	return api === "openai-codex-responses" ? CODEX_COMPACT_PATH : OPENAI_COMPACT_PATH;
+}
+
+/**
+ * Build the provider-relative standalone-search endpoint. This deliberately
+ * rejects a full Responses endpoint so an already-resolved URL cannot become
+ * `/responses/alpha/search` or `/codex/responses/alpha/search` by accident.
+ */
+export function buildAlphaSearchUrl(baseUrl: string): string | undefined {
+	const normalized = normalizeBaseUrl(baseUrl);
+	if (!normalized) return undefined;
+
+	let parsed: URL;
+	try {
+		parsed = new URL(normalized);
+	} catch {
+		return undefined;
+	}
+	if (
+		(parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+		parsed.username ||
+		parsed.password ||
+		parsed.search ||
+		parsed.hash
+	) {
+		return undefined;
+	}
+
+	const pathname = parsed.pathname.replace(/\/+$/, "");
+	if (
+		pathname.endsWith("/responses/alpha/search") ||
+		pathname.endsWith("/codex/responses/alpha/search") ||
+		pathname.endsWith("/responses/compact/alpha/search") ||
+		pathname.endsWith("/codex/responses/compact/alpha/search")
+	) {
+		return undefined;
+	}
+	if (pathname.endsWith("/alpha/search")) {
+		parsed.pathname = pathname;
+		return parsed.toString();
+	}
+	if (
+		pathname.endsWith("/responses") ||
+		pathname.endsWith("/codex/responses") ||
+		pathname.endsWith("/responses/compact") ||
+		pathname.endsWith("/codex/responses/compact")
+	) {
+		return undefined;
+	}
+
+	parsed.pathname = `${pathname}/${ALPHA_SEARCH_PATH}`.replace(/^\/\//, "/");
+	return parsed.toString();
 }
 
 async function resolveRequestAuth(ctx: ExtensionContext, model: RuntimeModel): Promise<ResolvedRequestAuth> {
