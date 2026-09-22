@@ -124,6 +124,28 @@ pi --model my-gateway/gpt-5.6-luna
 
 ## 常见用法
 
+### 用 `/compact` 为托管会话保存检查点
+
+Remote Context 已激活时，运行 `/compact`，后面可附加检查点要求，即可把工作状态保存到 notes，并在同一 Pi 会话中进入一个新窗口。Toolkit 临时选择 `context.remoteCompaction.model`，等待新的 notes 检查点和窗口标记成功持久化，再在新窗口首次请求前恢复原模型及思考等级，并要求原模型先读取检查点回执再继续工作。
+
+要指定检查点模型，将以下内容合并到 v2 配置，并把模型引用替换为 Pi 中已有的模型：
+
+```json
+{
+  "schemaVersion": 2,
+  "defaults": {
+    "context": {
+      "mode": "remote-windows",
+      "remoteCompaction": { "model": "my-gateway/gpt-5.6-luna" }
+    }
+  }
+}
+```
+
+检查点模型也必须支持 Remote Context，使用相同后端及账号，有足够的上下文容量，并允许使用上下文工具。网关模型还需要单独配置精确的传输协议选项。未设置或为 `null` 时使用当前模型。若 Auto Mode 已启用，目标模型也必须符合其准入条件，否则交接会被拒绝。notes 或模型操作失败时，只要临时选择仍由 Toolkit 管理，就会恢复原模型；用户后来明确选择的模型优先。重载只恢复模型选择，不会自动重新发起推理。
+
+该操作不生成会话摘要。Toolkit 会有意取消 Pi 原生压缩操作，再单独启动检查点交接，因此 SDK/RPC 调用方可能收到取消结果，同时看到检查点任务开始。空会话或刚压缩过的会话也可能在进入 Toolkit 钩子前就被 Pi 拒绝。自动阈值、溢出处理及内部旧窗口清理保持原有行为。详见[交接约定](docs/internals.md#managed-manual-compact)。
+
 ### 使用服务端压缩继续会话
 
 使用 `context.mode: "remote-compaction"` 选择 Responses 压缩路径（默认值），或设为 `"pi"` 交回 Toolkit 的上下文管理权。只有需要独立模型生成检查点时才设置 `context.remoteCompaction.model`。这些字段放在 `defaults` 或精确的 `models` 覆盖下。
@@ -208,7 +230,7 @@ TUI 会显示开启提示、审查活动和底部状态。兼容的 Pi 工具渲
 | --- | --- | --- |
 | `defaults.context.mode` | `"remote-compaction"` | `"pi"`、`"remote-compaction"` 或 `"remote-windows"`。 |
 | `models[exact].compatibility.transport` | `"standard"` | 用 `"codex-gateway"` 显式选择网关协议。 |
-| `defaults.context.remoteCompaction.model` | `null` | 可选的检查点生成模型。 |
+| `defaults.context.remoteCompaction.model` | `null` | 检查点生成模型，或 `remote-windows` 下手动检查点任务使用的模型。 |
 | `defaults.context.remoteCompaction.inputSource` | `"legacy"` | 与检查点来源绑定的输入策略。 |
 | `defaults.context.remoteWindows.reminderThresholdPercent` | `5` | `0` 关闭提醒和窗口耗尽兜底。 |
 | `defaults.webSearch.route` | `"unmanaged"` | Toolkit 搜索管理策略。 |
@@ -223,7 +245,7 @@ TUI 会显示开启提示、审查活动和底部状态。兼容的 Pi 工具渲
 
 使用 `/toolkit-config` 查看有效值及来源，`/toolkit-config validate` 查看文档问题，`/toolkit-config migration-preview` 预览只读的旧格式迁移候选。这些命令需要 UI，不查询网络或认证，不激活工具，也不写文件。选中配置不表示后端支持已验证。
 
-未知 v2 策略键和畸形值会产生可见的分范围错误，不依赖调试模式。每个公开回调或工具执行及其等待的辅助操作使用同一份不可变快照，后续操作重新读取文件；独立 Pi 事件之间不保证原子事务。完整选项见[配置参考](docs/configuration.md)和[编辑器 schema](config.schema.json)。
+未知 v2 策略键和畸形值会产生可见的分范围错误，不依赖调试模式。每个公开回调或工具执行及其等待的辅助操作使用同一份不可变快照，后续独立操作重新读取文件；托管 `/compact` 交接会保留发起时的上下文策略快照，直到模型恢复。独立 Pi 事件之间不保证通用的原子事务。完整选项见[配置参考](docs/configuration.md)和[编辑器 schema](config.schema.json)。
 
 ## 开发
 

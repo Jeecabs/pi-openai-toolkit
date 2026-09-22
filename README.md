@@ -124,6 +124,28 @@ Earlier windows remain retrievable through `history`, but are not all automatica
 
 ## Common tasks
 
+### Checkpoint a managed session with `/compact`
+
+In an active Remote Context session, run `/compact` (optionally followed by checkpoint instructions) to save work in notes and enter one new window in the same Pi session. Toolkit temporarily selects `context.remoteCompaction.model`, waits for a new successful persisted notes checkpoint and window marker, then restores the original model and thinking level before the first new-window request. That model is instructed to read the checkpoint receipt before continuing.
+
+To choose a checkpoint model, merge this into your v2 configuration and replace the model reference with an existing Pi model:
+
+```json
+{
+  "schemaVersion": 2,
+  "defaults": {
+    "context": {
+      "mode": "remote-windows",
+      "remoteCompaction": { "model": "my-gateway/gpt-5.6-luna" }
+    }
+  }
+}
+```
+
+The checkpoint model also needs Remote Context support, the same backend/account, enough context capacity, and the permitted context tools. A gateway model needs its own exact transport opt-in. Missing or `null` uses the current model. An engaged Auto Mode gate must remain eligible on the target; otherwise the handoff is refused. Notes or model failures restore the original selection when still owned by Toolkit; your later explicit model selection wins. Reload only recovers selection, without automatically restarting inference.
+
+This does not generate a conversation summary. Pi's native compact operation is intentionally cancelled to launch the separate handoff, so an SDK/RPC caller can see a cancellation even while checkpoint duty starts. Pi can also reject an empty or already-compacted session before Toolkit's hook runs. Automatic threshold/overflow handling and internal trim maintenance keep their existing behavior. See the [handoff contract](docs/internals.md#managed-manual-compact).
+
 ### Continue a session with server-side compaction
 
 Use `context.mode: "remote-compaction"` for the Responses compaction path (the default), or `"pi"` to relinquish Toolkit context management. Set `context.remoteCompaction.model` only when a separate model should produce the checkpoint. These fields belong under `defaults` or an exact `models` override.
@@ -208,7 +230,7 @@ The global file uses built-ins, then `defaults`, then exact `models["provider/mo
 | --- | --- | --- |
 | `defaults.context.mode` | `"remote-compaction"` | `"pi"`, `"remote-compaction"`, or `"remote-windows"`. |
 | `models[exact].compatibility.transport` | `"standard"` | Exact gateway opt-in with `"codex-gateway"`. |
-| `defaults.context.remoteCompaction.model` | `null` | Optional checkpoint producer. |
+| `defaults.context.remoteCompaction.model` | `null` | Checkpoint producer, or manual checkpoint-duty model in `remote-windows`. |
 | `defaults.context.remoteCompaction.inputSource` | `"legacy"` | Source-specific checkpoint input policy. |
 | `defaults.context.remoteWindows.reminderThresholdPercent` | `5` | `0` disables reminders and exhausted-window fallback. |
 | `defaults.webSearch.route` | `"unmanaged"` | Toolkit search ownership policy. |
@@ -223,7 +245,7 @@ The global file uses built-ins, then `defaults`, then exact `models["provider/mo
 
 Use `/toolkit-config` for effective values and origins, `/toolkit-config validate` for document issues, and `/toolkit-config migration-preview` for a read-only legacy candidate. These commands require a UI and perform no network/auth lookup, tool activation, or file writes. Configuration selection does not verify backend support.
 
-Unknown v2 policy keys and malformed values produce visible scoped errors, independent of debug mode. Each public callback or tool execution uses one immutable snapshot across its awaited helpers; later operations reread the file. Separate Pi events are not one atomic transaction. See the [complete configuration reference](docs/configuration.md) and [editor schema](config.schema.json).
+Unknown v2 policy keys and malformed values produce visible scoped errors, independent of debug mode. Each public callback or tool execution uses one immutable snapshot across its awaited helpers; later independent operations reread the file. A managed `/compact` handoff retains its initiating context-policy snapshot until selection is restored. Separate Pi events are not a general atomic transaction. See the [complete configuration reference](docs/configuration.md) and [editor schema](config.schema.json).
 
 ## Development
 
