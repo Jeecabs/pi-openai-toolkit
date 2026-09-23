@@ -6,17 +6,17 @@
   "engines": {
     "node": ">=22.19.0"
   },
-  "description": "OpenAI toolkit for Pi: Codex Remote Context windows, remote compaction v2, routed Web Search, image gen, auto mode.",
+  "description": "OpenAI toolkit for Pi: Codex Remote Context windows, remote compaction v2, and image generation.",
   "author": "awoaCrim and contributors",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/awoaCrim/pi-openai-toolkit.git"
+    "url": "git+https://github.com/Jeecabs/pi-openai-toolkit.git"
   },
   "bugs": {
-    "url": "https://github.com/awoaCrim/pi-openai-toolkit/issues"
+    "url": "https://github.com/Jeecabs/pi-openai-toolkit/issues"
   },
-  "homepage": "https://github.com/awoaCrim/pi-openai-toolkit#readme",
+  "homepage": "https://github.com/Jeecabs/pi-openai-toolkit#readme",
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
@@ -26,18 +26,14 @@
     "pi-extension",
     "openai",
     "compaction",
-    "web-search",
     "image-generation",
-    "auto-mode",
     "codex",
     "responses"
   ],
   "pi": {
     "extensions": [
       "./src/extension-runtime.ts",
-      "./src/web-search/extension.ts",
       "./src/image-generation/extension.ts",
-      "./src/auto-mode/extension.ts",
       "./src/codex-astra/extension.ts"
     ]
   },
@@ -78,15 +74,6 @@
     "src/image-generation/render.ts",
     "src/image-generation/service.ts",
     "src/image-generation/types.ts",
-    "src/auto-mode/extension.ts",
-    "src/auto-mode/tool-review-tui.ts",
-    "src/auto-mode/policy.ts",
-    "src/auto-mode/model-selection-guard.ts",
-    "src/auto-mode/prompt.ts",
-    "src/auto-mode/transcript.ts",
-    "src/auto-mode/reviewer.ts",
-    "src/auto-mode/classifier.ts",
-    "src/auto-mode/types.ts",
     "src/codex-astra/effort-planner.ts",
     "src/codex-astra/extension.ts",
     "src/model-scope.ts",
@@ -100,11 +87,7 @@
     "src/serializer.ts",
     "src/supported-environment.ts",
     "src/types.ts",
-    "src/web-search/alpha-client.ts",
-    "src/web-search/extension.ts",
-    "src/web-search/payload.ts",
-    "src/web-search/prompt.ts",
-    "src/web-search/types.ts",
+    "src/config/legacy-search.ts",
     "docs/internals.md",
     "docs/configuration.md",
     "README.md",

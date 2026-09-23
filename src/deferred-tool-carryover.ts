@@ -1,6 +1,7 @@
 import type { ResponsesCompatibleRequestPayload } from "./runtime";
 import { isDeferredToolCarryover, type DeferredToolCarryoverV1 } from "./types";
-import { LOCAL_WEB_SEARCH_TOOL_NAME, WEB_RUN_TOOL_NAME } from "./web-search/types";
+const LOCAL_WEB_SEARCH_TOOL_NAME = "web_search";
+const WEB_RUN_TOOL_NAME = "web_run";
 
 type JsonObject = Record<string, unknown>;
 

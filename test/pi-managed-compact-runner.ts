@@ -15,7 +15,7 @@ const incomplete = ["notes-failed", "no-rollover", "cancel-notes"].includes(scen
 const cancelledAfter = scenario === "cancel-after-schedule";
 const userSelection = scenario === "user-select";
 const noContinuation = incomplete || cancelledAfter || userSelection;
-const refused = scenario === "approval-refused" || scenario === "excluded-notes";
+const refused = scenario === "excluded-notes";
 const targetKey = `${provider}/${sameModel ? "original" : "checkpoint"}`;
 const packageDir = resolve(import.meta.dir, "..");
 
@@ -53,8 +53,7 @@ try {
 	await writeFile(join(configDir, "config.json"), JSON.stringify({
 		schemaVersion: 2,
 		defaults: { context: { mode: "remote-windows", remoteCompaction: { model: scenario === "unset-model" ? null : targetKey } } },
-		models: Object.fromEntries(["original", "checkpoint"].map((id) => [`${provider}/${id}`, { ...(native ? {} : { compatibility: { transport: "codex-gateway" } }),
-			...(scenario === "approval-refused" && id === "original" ? { autoMode: { available: true, reviewerModel: "managed/original" } } : {}) }])),
+		models: Object.fromEntries(["original", "checkpoint"].map((id) => [`${provider}/${id}`, native ? {} : { compatibility: { transport: "codex-gateway" } }])),
 	}));
 	const runtime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsStore: new InMemoryModelsStore(),
 		modelsPath: null, refreshOnCreate: false, allowModelNetwork: false });
@@ -81,7 +80,7 @@ try {
 	let handoffSettlementObserved = false;
 	const errors: string[] = [];
 	const loader = new DefaultResourceLoader({ cwd: env.cwd, agentDir: env.agentDir, settingsManager: settings,
-		additionalExtensionPaths: [join(packageDir, "src/extension-runtime.ts"), ...(scenario === "approval-refused" ? [join(packageDir, "src/auto-mode/extension.ts")] : [])],
+		additionalExtensionPaths: [join(packageDir, "src/extension-runtime.ts")],
 		noSkills: true, noPromptTemplates: true, noContextFiles: true, noThemes: true,
 		systemPromptOverride: () => "MANAGED-SYSTEM-HEAD. Follow the deterministic fixture tools.",
 		extensionFactories: [(pi) => {
@@ -189,7 +188,6 @@ try {
 	try {
 		await session.bindExtensions({ mode: "print", onError: (error) => { errors.push(error.error); } });
 		if (scenario !== "excluded-notes") await session.prompt("ACTIVE-TASK-ONLY-IN-SOURCE: preserve this work and its next steps.");
-		if (scenario === "approval-refused") await session.prompt("/auto on");
 		await assert.rejects(session.compact("Preserve the exact acceptance criteria"), /cancelled/);
 		const start = Date.now();
 		while (!refused && Date.now() - start < 9000 && (settled < (noContinuation ? 2 : 3) || !session.isIdle)) await new Promise((done) => setTimeout(done, 10));

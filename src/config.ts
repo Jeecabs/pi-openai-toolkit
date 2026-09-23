@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getExactModelKey, type ExactModelScopeModel } from "./model-scope";
-import { resolveWebSearchRoute, type WebSearchModel } from "./web-search/types";
+import { resolveWebSearchRoute, type WebSearchModel } from "./config/legacy-search";
 import { CONFIG_PATH, normalizeLegacyConfig } from "./config/legacy";
 import { resolveV2Config } from "./config/v2";
 import {

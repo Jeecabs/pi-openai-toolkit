@@ -4,7 +4,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { assertConfigValid, loadToolkitConfig, resolveToolkitConfig } from "../config";
 import { previewToolkitMigration } from "./migration";
-import { transformWebSearchPayload } from "../web-search/payload";
 
 const dirs: string[] = [];
 function fixture(raw: unknown): string {
@@ -62,26 +61,16 @@ test("legacy invalid selected route cannot fall through to its hosted allowlist"
 	expect(() => assertConfigValid(resolved, "webSearch")).toThrow("No fallback");
 });
 
-test("valid legacy hosted failure behavior remains permissive and migration flags the difference", () => {
+test("legacy hosted migration flags the upstream behavior difference", () => {
 	const file = fixture({ webSearch: { models: ["p/m"] } });
 	const bytes = fs.readFileSync(file, "utf8");
 	const loaded = loadToolkitConfig(file);
-	const legacy = resolveToolkitConfig(loaded, model);
-	expect(transformWebSearchPayload({ model, config: legacy.config.webSearch, payload: { tools: 1 } }).fatal).toBeUndefined();
 	const unsupported = resolveToolkitConfig(loaded, { ...model, api: "anthropic-messages" });
 	expect(unsupported.policy.webSearch.route).toBe("unmanaged");
 	const preview = previewToolkitMigration(loaded);
 	expect(preview.status).toBe("needs-review");
 	expect(preview.reasons.join(" ")).toContain("not behavior-equivalent");
 	expect(fs.readFileSync(file, "utf8")).toBe(bytes);
-});
-
-test("explicit local and unmanaged retain different payload behavior", () => {
-	const payload = { tools: [{ type: "web_search" }, { type: "function", name: "web_run" }, { type: "function", name: "read" }] };
-	const unmanaged = resolveToolkitConfig(loadToolkitConfig(fixture({ schemaVersion: 2, defaults: { webSearch: { route: "unmanaged" } } })), model);
-	const local = resolveToolkitConfig(loadToolkitConfig(fixture({ schemaVersion: 2, defaults: { webSearch: { route: "local" } } })), model);
-	expect(transformWebSearchPayload({ model, config: unmanaged.config.webSearch, payload }).payload).toBe(payload);
-	expect(transformWebSearchPayload({ model, config: local.config.webSearch, payload }).payload).toEqual({ tools: [{ type: "function", name: "read" }] });
 });
 
 test("migration leaves unknown/dormant content in source and never includes raw unknown values", () => {

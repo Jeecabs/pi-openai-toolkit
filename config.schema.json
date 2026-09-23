@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/awoaCrim/pi-openai-toolkit/blob/main/config.schema.json",
+  "$id": "https://github.com/Jeecabs/pi-openai-toolkit/blob/main/config.schema.json",
   "title": "Pi OpenAI Toolkit global configuration v2",
   "description": "Strict schema for the canonical global Toolkit configuration. Runtime validation additionally enforces normalized exact keys and image default membership.",
   "type": "object",
@@ -145,6 +145,8 @@
       }
     },
     "webSearch": {
+      "description": "Compatibility data only. Web search is removed from this fork.",
+      "deprecated": true,
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -184,6 +186,8 @@
       }
     },
     "autoMode": {
+      "description": "Compatibility data only. Tool-call review is removed from this fork.",
+      "deprecated": true,
       "type": "object",
       "additionalProperties": false,
       "properties": {

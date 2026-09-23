@@ -1,5 +1,6 @@
 import type { ResponsesCompatibleRequestPayload } from "./runtime";
-import { LOCAL_WEB_SEARCH_TOOL_NAME, WEB_RUN_TOOL_NAME } from "./web-search/types";
+const LOCAL_WEB_SEARCH_TOOL_NAME = "web_search";
+const WEB_RUN_TOOL_NAME = "web_run";
 
 /**
  * Explicit allowlist of fields mirrored from the latest live Responses request.
