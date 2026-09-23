@@ -1,8 +1,10 @@
 # pi-openai-toolkit
 
-Add Codex context windows, Responses compaction, hosted tools, and tool-call review to Pi.
+Add Codex context windows, Responses compaction, and image generation to Pi.
 
-[![npm version](https://img.shields.io/npm/v/pi-openai-toolkit.svg)](https://www.npmjs.com/package/pi-openai-toolkit)
+Fork of [awoaCrim/pi-openai-toolkit](https://github.com/awoaCrim/pi-openai-toolkit). Web search and tool-call review are removed. The Codex Astra compatibility layer remains.
+
+Existing `webSearch` and `autoMode` settings remain readable for config compatibility, but cannot enable either feature. This fork provides no approval gate.
 [![License: MIT](https://img.shields.io/npm/l/pi-openai-toolkit.svg)](LICENSE)
 
 [简体中文](README.zh.md)
@@ -13,9 +15,7 @@ Add Codex context windows, Responses compaction, hosted tools, and tool-call rev
 | --- | --- |
 | Codex Remote Context | Start new windows with the adapted Codex protocol and retrieve earlier work through `history`. |
 | Remote Compaction v2 | Continue Responses sessions with encrypted server checkpoints. |
-| Web Search | Choose local `pi-web-access`, Responses `web_search`, or experimental CPA `web_run` per model. |
 | Image generation | Generate or edit images with the hosted Responses image tool. |
-| Tool-call review | Have a reviewer model approve selected calls through Toolkit's approval gate. |
 
 The package uses Pi's existing models, authentication, and sessions. It does not add a provider or model.
 
@@ -24,7 +24,7 @@ The package uses Pi's existing models, authentication, and sessions. It does not
 Requires Pi 0.87.0+ and Node.js 22.19.0+.
 
 ```bash
-pi install npm:pi-openai-toolkit
+pi install git:github.com/Jeecabs/pi-openai-toolkit
 ```
 
 Add `--local` for a project-local installation. Toolkit configuration is global in either case:
@@ -33,11 +33,11 @@ Add `--local` for a project-local installation. Toolkit configuration is global 
 
 Create the file and parent directory if needed. Merge the Toolkit examples below into an existing **schema v2** config; do not replace unrelated settings. For an unversioned legacy config, run `/toolkit-config migration-preview` first. See the [migration guide](docs/configuration.md#legacy-compatibility-and-migration).
 
-By default, eligible models use Remote Compaction v2. Remote Context windows, image generation, and Auto Mode are off; search is unmanaged. Backend support is still required.
+By default, eligible models use Remote Compaction v2. Remote Context windows and image generation are off. Backend support is still required.
 
 ## Quick start: enable Remote Context
 
-For search, images, or tool-call review only, skip to [Common tasks](#common-tasks).
+For image generation only, skip to [Common tasks](#common-tasks).
 
 ### Use Pi's built-in Codex provider
 
@@ -139,33 +139,6 @@ To use a separate checkpoint model, set `context.remoteCompaction.model` under `
 
 Set `context.mode` to `"remote-compaction"` (the default) for encrypted Responses checkpoints, or `"pi"` to leave context management to Pi. Advanced input and fallback options are in the [configuration reference](docs/configuration.md#context).
 
-### Choose a Web Search route
-
-Set a default route and override it for individual models:
-
-```json
-{
-  "schemaVersion": 2,
-  "defaults": {
-    "webSearch": { "route": "local" }
-  },
-  "models": {
-    "my-gateway/gpt-5.6-luna": {
-      "webSearch": { "route": "hosted" }
-    }
-  }
-}
-```
-
-| Route | Behavior |
-| --- | --- |
-| `unmanaged` | Leave search to Pi and other extensions. |
-| `local` | Keep the existing local `pi-web-access` tools. |
-| `hosted` | Use Responses `web_search` with source annotations. |
-| `standalone-alpha` | Use experimental `web_run` on a CPA/Codex gateway that supports `/alpha/search`. |
-
-Toolkit does not fall back between routes. See [search configuration](docs/configuration.md#web-search) for backend requirements.
-
 ### Generate an image
 
 Requires a Responses session and may incur provider charges. Enable it with an image model your provider supports:
@@ -184,26 +157,6 @@ Requires a Responses session and may incur provider charges. Enable it with an i
 ```
 
 Ask Pi to generate an image or edit explicitly supplied local references using `openai_generate_image`. The default model must be in `allowedModels`; image settings are global. See [image configuration](docs/configuration.md#images).
-
-### Review tool calls automatically
-
-Enable Auto Mode for a model and choose its reviewer:
-
-```json
-{
-  "schemaVersion": 2,
-  "models": {
-    "my-gateway/gpt-5.6-luna": {
-      "autoMode": {
-        "available": true,
-        "reviewerModel": "my-gateway/gpt-5.6-luna"
-      }
-    }
-  }
-}
-```
-
-Turn it on with `/auto on` or `--auto`, and off with `/auto off`. By default it reviews `bash`, `write`, `edit`, and configured extra tools; `gate: "all"` reviews every call. A reviewer timeout never approves a call. See [Auto Mode settings](docs/configuration.md#auto-mode).
 
 ## Common configuration
 

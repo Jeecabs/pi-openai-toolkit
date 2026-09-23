@@ -3,8 +3,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import { join } from "node:path";
 import { clearRequestContextCache, getCompactionRequestExtras } from "./request-context-cache";
-import { transformWebSearchPayload } from "./web-search/payload";
-import { WEB_SEARCH_SOURCE_INCLUDE } from "./web-search/types";
 import {
 	DEFAULT_COMPACTION_CONFIG,
 	DEFAULT_TOOLKIT_CONFIG,
@@ -1227,17 +1225,6 @@ test("first post-compaction turn rewrites to fresh preamble + opaque compacted w
 	)) as { input: unknown[]; instructions: string };
 	const expectedTail = await serializeResponsesInput(model, [toReplayMessage(currentUser)]);
 	const expectedInput = [payload.input[0], ...compactedWindow, ...expectedTail];
-	const liveSearch = transformWebSearchPayload({
-		model,
-		config: { ...DEFAULT_WEB_SEARCH_CONFIG, models: [`${model.provider}/${model.id}`] },
-		payload: rewritten,
-	});
-	const finalPayload = liveSearch.payload as {
-		input: unknown[];
-		instructions: string;
-		tools: unknown[];
-		include: unknown[];
-	};
 	const cachedExtras = getCompactionRequestExtras({
 		provider: model.provider,
 		api: model.api,
@@ -1248,9 +1235,6 @@ test("first post-compaction turn rewrites to fresh preamble + opaque compacted w
 
 	expect(rewritten.instructions).toBe("Current instructions v2");
 	expect(rewritten.input).toEqual(expectedInput);
-	expect(finalPayload.input).toEqual(expectedInput);
-	expect(finalPayload.tools).toEqual([{ type: "web_search" }]);
-	expect(finalPayload.include).toEqual([WEB_SEARCH_SOURCE_INCLUDE]);
 	expect(cachedExtras?.tools).toBeUndefined();
 	expect(JSON.stringify(rewritten.input)).not.toContain("Old user context that Pi should stop duplicating.");
 	expect(JSON.stringify(rewritten.input)).not.toContain(

@@ -1,11 +1,9 @@
 import { getExactModelKey, isExactModelAllowed } from "../model-scope";
 import type { WebSearchConfig, WebSearchRoute } from "../types";
 
-export const WEB_SEARCH_CAPABLE_APIS = ["openai-responses", "openai-codex-responses"] as const;
-export const WEB_SEARCH_SOURCE_INCLUDE = "web_search_call.action.sources";
-export const WEB_SEARCH_PROMPT_MARKER = "<!-- pi-openai-toolkit:web-search -->";
-export const WEB_RUN_TOOL_NAME = "web_run";
-export const LOCAL_WEB_SEARCH_TOOL_NAME = "web_search";
+// Decode upstream search settings for configuration compatibility only.
+// This fork has no search runtime.
+const WEB_SEARCH_CAPABLE_APIS = ["openai-responses", "openai-codex-responses"] as const;
 
 export type WebSearchCapableApi = (typeof WEB_SEARCH_CAPABLE_APIS)[number];
 export type WebSearchRouteSource = "exact" | "default" | "legacy" | "none";
@@ -31,28 +29,6 @@ export type WebSearchRouteResolution =
 			available: boolean;
 			reason?: WebSearchRouteUnavailableReason;
 	  };
-
-export type WebSearchPayloadOutcome =
-	| "disabled"
-	| "unsupported-model"
-	| "non-object-payload"
-	| "invalid-tools"
-	| "invalid-include"
-	| "existing-native-tool"
-	| "injected-native-tool"
-	| "local-route"
-	| "standalone-route"
-	| "removed-conflicting-tools"
-	| "unavailable-route";
-
-export type WebSearchPayloadTransform = {
-	payload: unknown;
-	outcome: WebSearchPayloadOutcome;
-	changed: boolean;
-	/** Explicit route failures must abort rather than silently select another search path. */
-	fatal?: boolean;
-	errorMessage?: string;
-};
 
 export function getWebSearchModelKey(model: WebSearchModel | undefined): string | undefined {
 	return getExactModelKey(model);
@@ -132,13 +108,4 @@ export function resolveWebSearchRoute(args: {
 	}
 
 	return { route: "none", source: "none", modelKey, reason: "unconfigured" };
-}
-
-/** Compatibility predicate for callers that specifically need the hosted path. */
-export function isWebSearchEnabledForModel(
-	model: WebSearchModel | undefined,
-	config: WebSearchConfig,
-): boolean {
-	const resolution = resolveWebSearchRoute({ model, config });
-	return resolution.route === "hosted" && resolution.available;
 }

@@ -5,7 +5,6 @@ import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { resolveToolkitConfig } from "../config";
 import { v2Fixture } from "../config/test-helpers";
-import { listenForProtectedSelection } from "../auto-mode/model-selection-guard";
 import { ManagedManualCompact, MANUAL_COMPACT_ENTRY_TYPE, decodeManualCompactRecord, sameContextScope } from "./manual-compact";
 import { CodexContextWindowManager } from "./window-manager";
 import { createContextManagementTools } from "./tools";
@@ -136,7 +135,7 @@ for (const target of [null, "managed/original"]) {
 	});
 }
 
-for (const rejection of ["missing", "capacity", "excluded", "target-policy", "backend", "account", "auth", "approval"] as const) {
+for (const rejection of ["missing", "capacity", "excluded", "target-policy", "backend", "account", "auth"] as const) {
 	test(`preflight ${rejection} refusal never switches or starts inference`, async () => {
 		const h = harness({ ...(rejection === "missing" ? { target: "managed/missing" } : {}), ...(rejection === "capacity" ? { capacity: 100 } : {}) });
 		if (rejection === "excluded") h.setActive(["history", "new_context"]);
@@ -144,8 +143,7 @@ for (const rejection of ["missing", "capacity", "excluded", "target-policy", "ba
 		if (["backend", "account", "auth"].includes(rejection)) h.setAuth((id) => id === "checkpoint"
 			? rejection === "auth" ? { ok: false } : { ok: true, apiKey: rejection === "account" ? "another-key" : "test-key", baseUrl: rejection === "backend" ? "https://elsewhere.invalid/v1" : undefined }
 			: { ok: true, apiKey: "test-key" });
-		const stop = rejection === "approval" ? listenForProtectedSelection(h.pi, () => "deny", () => {}) : undefined;
-		await h.begin(); stop?.();
+		await h.begin();
 		expect(h.changes).toEqual([]); expect(h.prompts).toEqual([]); expect(h.notices.length).toBeGreaterThan(0);
 		expect(h.manual.busy).toBe(false);
 	});

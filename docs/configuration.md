@@ -2,6 +2,8 @@
 
 Toolkit reads only `~/.pi/agent/extensions/pi-openai-toolkit/config.json`. There are no project overrides, environment policy overlays, profiles, `extends`, or wildcard rules. Pi still owns extension loading, provider endpoints, model registration, and credentials. A project-local extension installation does not create project-local Toolkit policy.
 
+This fork provides context management and image generation only. It retains upstream `webSearch` and `autoMode` parsing for config compatibility. These settings cannot enable search or tool-call review. This fork provides no approval gate.
+
 This reference describes schema v2. Unversioned legacy configuration remains supported. Configuration schema v2 and Remote Compaction v2 are separate version numbers.
 
 ---
@@ -15,13 +17,11 @@ Create the file and parent directory if absent. This example states the shipped 
   "schemaVersion": 2,
   "defaults": {
     "context": { "mode": "remote-compaction" },
-    "webSearch": { "route": "unmanaged" },
     "imageGeneration": {
       "enabled": false,
       "defaultModel": "gpt-image-2.5",
       "allowedModels": ["gpt-image-2.5"]
-    },
-    "autoMode": { "available": false }
+    }
   },
   "models": {},
   "diagnostics": {
@@ -42,11 +42,11 @@ Create the file and parent directory if absent. This example states the shipped 
 
 Precedence is built-ins, then `defaults`, then `models["provider/model-id"]`. Keys are exact and case-sensitive. Leading/trailing whitespace is trimmed; conflicting normalized keys are rejected. Model IDs may contain further slashes. No pattern matching or endpoint/capability guessing occurs.
 
-Known nested objects merge by field. Missing fields inherit, arrays replace instead of append, and `false`/`0` retain their meanings. Only optional model references accept `null`: context producer, native-fallback model, auto reviewer, and classifier model. `null` elsewhere is invalid. Defaults do not prohibit exact overrides; an exact model can set `available: true` over a default of `false`.
+Known nested objects merge by field. Missing fields inherit, arrays replace instead of append, and `false`/`0` retain their meanings. Only optional model references accept `null`: context producer, native-fallback model, auto reviewer, and classifier model. `null` elsewhere is invalid. Defaults do not prohibit exact overrides.
 
 A missing file uses independent built-in defaults. Invalid JSON, an unreadable file, missing/unsupported `schemaVersion` on a v2-shaped document, or mixed legacy/v2 fields are reported distinctly. Unknown v2 policy keys are errors in their owning scope. Invalid selected settings block dependent operations; they never silently pick a more permissive route. Errors in other models remain visible without replacing a valid current model's policy. A valid exact leaf may shadow an invalid default leaf, but cannot hide a malformed containing object or unknown field in that feature scope.
 
-Each public callback, tool execution, compaction, reviewer/classifier operation, or config command uses an immutable snapshot across its awaited helpers. The next operation reads again. This does not make separate Pi headers, payload, and tool events one atomic transaction. Engagement, overrides, scores, windows, and results stay out of the config file.
+Each public callback, tool execution, compaction, or config command uses an immutable snapshot across its awaited helpers. The next operation reads again. This does not make separate Pi headers, payload, and tool events one atomic transaction. Engagement, overrides, scores, windows, and results stay out of the config file.
 
 ---
 
@@ -69,7 +69,7 @@ Place `context` under `defaults` or an exact `models` entry.
 
 Native Codex eligibility derives from the actual Pi provider/API. Gateways additionally need the exact transport opt-in below. `remote-windows` retains the compaction chain for models outside window capability. A configured window model whose activation fails does not silently receive a summary fallback. Normal `new_context` keeps its persisted-notes, duplicate and cooldown gates. Synthetic Remote V2 producer/consumer identity and checkpoint provenance are unchanged. See [Toolkit internals](internals.md).
 
-In active `remote-windows`, `/compact [instructions]` starts checkpoint duty rather than producing a summary. The selected model must authenticate to the same native backend/account or gateway credential/affinity domain, fit the projected window plus its output reserve, and retain the required permitted context tools. Invalid or unsuitable explicit targets are refused without switching to a fallback model. If Auto Mode is engaged, the target must also be eligible for its gate. The entire handoff uses the initiating context-policy snapshot; no config or global Pi defaults are rewritten.
+In active `remote-windows`, `/compact [instructions]` starts checkpoint duty rather than producing a summary. The selected model must authenticate to the same native backend/account or gateway credential/affinity domain, fit the projected window plus its output reserve, and retain the required permitted context tools. Invalid or unsuitable explicit targets are refused without switching to a fallback model. The entire handoff uses the initiating context-policy snapshot; no config or global Pi defaults are rewritten.
 
 Only a new persisted successful notes write/append after the handoff and the latest delivered user message authorizes its rollover. After the exact target marker is durable, Toolkit restores the original model/thinking before new-window inference and asks it to read the receipt first. Failure or cancellation restores an owned selection; a later user selection takes priority. Failed restoration blocks further handoff requests until selection/auth is repaired. Reload can recover selection, but does not automatically restart inference.
 
@@ -81,22 +81,24 @@ The SDK native compact call reports its intentional cancellation; the visible ha
 
 Only `models["provider/model-id"].compatibility.transport` is configurable: `"standard"` is the internal baseline and `"codex-gateway"` is an exact opt-in. There is no global `defaults.compatibility` and no built-in gateway model list.
 
-This selects an existing Toolkit protocol profile, independently of context mode. It does not change Pi's provider, API, endpoint, or model. The same decoded document supplies compatibility for search, image generation, and a separately named compaction producer. A successful config resolution is not a backend capability test.
+This selects an existing Toolkit protocol profile, independently of context mode. It does not change Pi's provider, API, endpoint, or model. The same decoded document supplies compatibility for image generation and a separately named compaction producer. A successful config resolution is not a backend capability test.
 
 ---
 
-### Web Search
+### Web Search (removed)
+
+The fields below describe retained upstream config values only. This fork has no search runtime.
 
 `defaults.webSearch.route` and `models[exact].webSearch.route` accept:
 
-| Route | Behavior |
+| Route | Upstream behavior (not available in this fork) |
 | --- | --- |
 | `unmanaged` | Default. Release Toolkit ownership and remove Toolkit-owned standalone exposure. Third-party search and unrelated network tools remain possible. |
 | `local` | Restore the original local tool state and remove native/standalone search conflicts from provider payloads. Never activate a previously inactive local tool. |
 | `hosted` | Use native Responses search with source annotations; suppress conflicting local and standalone tools. |
 | `standalone-alpha` | Experimental, explicit opt-in. Expose sequential `web_run` and call the provider-relative `/alpha/search` endpoint once per execution. |
 
-There is no v2 search master switch. `local` and `unmanaged` differ in payload cleanup and ownership. Missing auth, an unavailable route, a tool conflict, or invalid selected policy does not trigger another route. Standalone supports `search_query`, `image_query`, `open`, `click`, `find`, `screenshot`, `finance`, `weather`, `sports`, and `time`, with `response_length`. It sends a bounded command envelope rather than the full transcript; follow-up references depend on the provider's session/reference handling. The gateway must expose the endpoint and its standalone-search capability.
+These routes do not change tools or provider requests in this fork.
 
 ---
 
@@ -108,9 +110,9 @@ These are bare output-model IDs, not active-session model keys. Each normalized 
 
 ---
 
-### Auto Mode
+### Auto Mode (removed)
 
-Place `autoMode` under `defaults` or an exact model. `available` permits engagement; it does not engage the runtime. Use `/auto on` or `--auto`, and `/auto off` to disengage. If an engaged session encounters invalid policy, calls remain blocked until policy is corrected or the user explicitly turns the gate off. A review timeout never means approval.
+The fields below remain readable for config compatibility only. This fork has no reviewer, classifier, approval gate, `/auto` command, or `--auto` flag.
 
 | Relative field | Default | Contract |
 | --- | --- | --- |
@@ -130,7 +132,7 @@ Place `autoMode` under `defaults` or an exact model. `available` permits engagem
 | `circuitBreaker.recentDenials` | `10` | Integer 0-100; `0` disables this limit. |
 | `circuitBreaker.windowSize` | `50` | Integer 1-200, recent-verdict window size. |
 
-Reviewer and classifier references are not active-session overrides. Classifier scores, denial history, and human decisions never become config entries. The reviewer and its read-only evidence calls share one cancellable deadline, including dependencies that ignore abort. Denial history resets on actual delivery of a user message, including identical queued messages, not on enqueue or an ordinary tool continuation. Pre-scores are bound to a full structured authorization fingerprint; the bounded review transcript prioritizes recent user instructions and reports omissions.
+These values do not start a reviewer or change tool execution in this fork.
 
 ---
 
@@ -155,7 +157,7 @@ Diagnostics are plugin-wide, not model-scoped.
 
 ### Legacy compatibility and migration
 
-Do not combine unversioned roots (`compaction`, `webSearch`, `imageGeneration`, `autoMode`) with `schemaVersion: 2`. Valid legacy behavior is retained through a compatibility adapter, including nullable model clears, legacy image-list defaults, and source-dependent hosted-search failure handling. Invalid selected legacy route values are now blocked instead of disappearing into another selection.
+Do not combine unversioned roots (`compaction`, `webSearch`, `imageGeneration`, `autoMode`) with `schemaVersion: 2`. The compatibility adapter retains nullable model references and legacy image-list defaults. It validates old search and review fields without enabling either feature.
 
 The preview maps recognized fields into a candidate, supplies leaf origins, lists unmapped/dormant paths, and reports `ready`, `needs-review`, `already-v2`, or `unavailable`. `ready` means no known semantic difference was found in recognized active policy; it is not authorization to apply or proof of provider support. Unknown names are masked and their values are never copied into the report. The original source bytes remain the authoritative copy of unknown and dormant content.
 

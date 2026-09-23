@@ -56,7 +56,6 @@ import {
 	serializeLiveTailToResponsesInput,
 } from "./payload-rewrite";
 import { getCompactionRequestExtras, rememberRequestContext } from "./request-context-cache";
-import { resolveWebSearchRoute } from "./web-search/types";
 import { executeRemoteV2Compaction } from "./remote-v2-client";
 import {
 	resolveNativeCompactionEnvironment,
@@ -1046,9 +1045,7 @@ async function handleBeforeProviderRequest(
 
 	// Capture compact-relevant request fields (tools, reasoning, ...) for the next
 	// synthetic compact request using the active consumer's effective runtime identity.
-	// This hook runs before the separate Web Search transform, so injected native search
-	// tools are not copied into remote_compaction_v2.
-	const webSearchRoute = resolveWebSearchRoute({ model: ctx.model, config: toolkitConfig.webSearch });
+	// Exclude search tools from other extensions from synthetic compaction requests.
 	rememberRequestContext(
 		payload,
 		{
@@ -1059,7 +1056,7 @@ async function handleBeforeProviderRequest(
 			sessionId: getSessionId(ctx),
 		},
 		{
-			excludeWebSearchTools: webSearchRoute.route === "standalone-alpha",
+			excludeWebSearchTools: true,
 		},
 	);
 

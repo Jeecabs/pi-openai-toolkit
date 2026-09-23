@@ -27,6 +27,7 @@ export function describeToolkitConfig(resolved: ResolvedToolkitConfig): string {
 		`Format: ${resolved.format}; model: ${resolved.modelKey ?? "not selected"}`,
 		`Invalid selected features: ${resolved.invalidFeatures.join(", ") || "none"}`,
 		"Configuration intent only. Tool registration and backend capability are not verified.",
+		"This fork has no web search or tool-call review. webSearch and autoMode values are compatibility data only.",
 	];
 	for (const [field, origin] of Object.entries(resolved.origins)) {
 		const value = JSON.stringify(readLeaf(resolved.policy, field));
