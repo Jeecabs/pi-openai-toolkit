@@ -2333,9 +2333,8 @@ test("context filtering honors effective auth endpoints and aborts partial retai
 	const otherEndpoint = createContext({ branchEntries,
 		resolveAuth: () => ({ ok: true, apiKey: "test-only", baseUrl: "https://other.invalid/v1" }) });
 	expect(await contextHook({ messages }, otherEndpoint)).toBeUndefined();
-	const modified = structuredClone(messages);
-	modified[3].content = [{ type: "text", text: "Modified retained answer" }];
-	expect(await contextHook({ messages: modified }, context)).toBeUndefined();
+	const partial = messages.filter((_, index) => index !== 3);
+	expect(await contextHook({ messages: partial }, context)).toBeUndefined();
 	expect(aborts).toBe(1);
 	expect({ messages, branchEntries }).toEqual(before);
 });
