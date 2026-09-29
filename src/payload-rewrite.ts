@@ -228,6 +228,17 @@ function findCompactionSummaryIndex(input: readonly unknown[], summaryMarker: st
 	});
 }
 
+/**
+ * Context hooks may rewrite a retained message's content (e.g. pruning a stale
+ * read or scrubbing a secret) while keeping its identity. The checkpoint
+ * already holds the original, so the rewritten copy is still a duplicate.
+ */
+function isSameRetainedMessage(message: AgentMessage, expected: AgentMessage): boolean {
+	return message.role === expected.role
+		&& message.timestamp === expected.timestamp
+		&& (message as { toolCallId?: unknown }).toolCallId === (expected as { toolCallId?: unknown }).toolCallId;
+}
+
 function collectReplayMessages(entries: readonly SessionEntry[]): AgentMessage[] {
 	return buildSessionProjection([...entries]).messages;
 }
@@ -317,8 +328,8 @@ export function removeNativeCompactionRetainedMessages(args: {
 	// Custom messages are optional context-hook entries: a hook may filter or
 	// rewrite them before provider serialization. An exact custom copy is still
 	// removed when present, while a missing or rewritten copy is left alone.
-	// Required user/assistant/tool messages keep the ordered, fail-closed
-	// matching contract.
+	// Required user/assistant/tool messages are matched in order by identity,
+	// and a missing one still fails closed.
 	// Pi 0.86 promotes transcript system messages to the leading prompt when it
 	// rebuilds context after compaction. They can therefore appear before the
 	// compaction summary even when their session entry lies inside the retained
@@ -330,15 +341,15 @@ export function removeNativeCompactionRetainedMessages(args: {
 	const removed = new Set<number>();
 	let cursor = summaryIndex + 1;
 	for (const expected of requiredRetained) {
-		const index = args.messages.findIndex((message, index) => index >= cursor && areEquivalentValues(message, expected));
+		const index = args.messages.findIndex((message, index) => index >= cursor && isSameRetainedMessage(message, expected));
 		if (index >= 0) {
 			removed.add(index);
 			cursor = index + 1;
 		}
 	}
 	// An empty required span is valid. For a non-empty span, zero matches is
-	// ambiguous with the entire required history having been removed or changed;
-	// fail closed instead of treating it as an already-filtered no-op. Partial
+	// ambiguous with the entire required history having been removed; fail
+	// closed instead of treating it as an already-filtered no-op. Partial
 	// matches are equally unsafe because they can remove half a call/result batch.
 	if (requiredRetained.length > 0 && removed.size !== requiredRetained.length) {
 		return { ok: false, reason: "retained-context-mismatch" };

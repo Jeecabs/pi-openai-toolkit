@@ -126,32 +126,24 @@ describe("latest Pi retained context", () => {
 			reason: "unverified-compaction-input",
 		});
 	});
-	test("fails closed rather than removing half a modified tool batch", () => {
+	test("removes retained copies whose content a context hook rewrote", () => {
 		const args = fixture();
-		const messages = structuredClone(args.messages);
-		const tool = messages.find((message) => message.role === "toolResult");
-		assert(tool?.role === "toolResult");
-		tool.content = [{ type: "text", text: "different" }];
+		// Shape of a stale-read prune or secret scrub: same message, new content.
+		const messages = args.messages.map((message) =>
+			message.role === "toolResult" ? { ...message, content: [{ type: "text" as const, text: "[pruned]" }] }
+			: message.role === "assistant" ? { ...message, content: [{ type: "text" as const, text: "modified assistant" }] }
+			: message,
+		);
 		const before = structuredClone(messages);
-		expect(removeRetained({ ...args, messages })).toEqual({ ok: false, reason: "retained-context-mismatch" });
+		const result = removeRetained({ ...args, messages });
+		assert(result.ok);
+		expect(result.messages.map((message) => message.role)).toEqual(["compactionSummary", "user"]);
 		expect(messages).toEqual(before);
 	});
-	test("fails closed when every required retained message is modified", () => {
+	test("fails closed rather than removing half a tool batch", () => {
 		const args = fixture();
-		const messages = structuredClone(args.messages);
-		for (const message of messages) {
-			if (message.role === "assistant") {
-				message.content = [{ type: "text", text: "modified assistant" }];
-			}
-			if (message.role === "toolResult") {
-				message.content = [{ type: "text", text: "modified result" }];
-			}
-		}
-
-		expect(removeRetained({ ...args, messages })).toEqual({
-			ok: false,
-			reason: "retained-context-mismatch",
-		});
+		const messages = args.messages.filter((message) => message.role !== "toolResult");
+		expect(removeRetained({ ...args, messages })).toEqual({ ok: false, reason: "retained-context-mismatch" });
 	});
 	test("fails closed when the complete required retained span is missing", () => {
 		const args = fixture();
@@ -166,7 +158,7 @@ describe("latest Pi retained context", () => {
 			reason: "retained-context-mismatch",
 		});
 	});
-	test("filtered custom content cannot hide a damaged required tool result", () => {
+	test("filtered custom content cannot hide a missing required tool result", () => {
 		const manager = SessionManager.inMemory("C:/offline");
 		manager.appendMessage({ role: "user", content: "old", timestamp: 1 });
 		const firstKeptEntryId = manager.appendMessage(
@@ -198,12 +190,9 @@ describe("latest Pi retained context", () => {
 		const branchEntries = manager.getBranch();
 		const compactionEntry = branchEntries.find((entry) => entry.id === compactionId);
 		assert(compactionEntry?.type === "compaction");
-		const messages = structuredClone(manager.buildSessionContext().messages.filter(
-			(message) => message.role !== "custom" || message.customType !== "state",
-		));
-		const tool = messages.find((message) => message.role === "toolResult");
-		assert(tool?.role === "toolResult");
-		tool.content = [{ type: "text", text: "tampered result" }];
+		const messages = manager.buildSessionContext().messages.filter(
+			(message) => message.role !== "toolResult" && (message.role !== "custom" || message.customType !== "state"),
+		);
 
 		expect(removeRetained({ messages, branchEntries, compactionEntry })).toEqual({
 			ok: false,
