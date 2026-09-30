@@ -96,7 +96,7 @@ export function buildCodexCliUserAgent(version: string): string {
  * requests that name it. Keep this in sync with the newest gate Oh My Pi pins
  * in @oh-my-pi/pi-wire/codex (`CODEX_CLIENT_VERSION`).
  */
-export const CODEX_CLIENT_VERSION = "0.153.0";
+export const CODEX_CLIENT_VERSION = "0.159.2";
 
 /** Prompt cache keys are clamped by the same host rule (`OPENAI_PROMPT_CACHE_KEY_MAX_LENGTH`). */
 const CODEX_SESSION_ID_MAX_LENGTH = 64;

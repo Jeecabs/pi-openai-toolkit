@@ -594,7 +594,7 @@ test("codex compaction requests carry the version gate and session affinity head
 	});
 
 	const headers = new Headers(fetchInit?.headers);
-	expect(headers.get("version")).toBe("0.153.0");
+	expect(headers.get("version")).toBe("0.159.2");
 	expect(headers.get("session-id")).toBe("sess-affinity");
 	expect(headers.get("x-client-request-id")).toBe("sess-affinity");
 	expect(headers.get("chatgpt-account-id")).toBe("acct_9");

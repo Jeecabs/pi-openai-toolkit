@@ -191,7 +191,7 @@ describe("codex astra extension wiring", () => {
 
 		const headers: Record<string, string | null> = { authorization: "Bearer x" };
 		fire("before_provider_headers", { type: "before_provider_headers", headers });
-		expect(headers.version).toBe("0.153.0");
+		expect(headers.version).toBe("0.159.2");
 		expect(headers.authorization).toBe("Bearer x");
 
 		const otherHeaders: Record<string, string | null> = {};
