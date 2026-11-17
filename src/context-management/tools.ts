@@ -1,5 +1,5 @@
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
-import { StringEnum, Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { executeHistoryNotesTool, type CodexHistoryNotesDetails } from "./history-notes";
 import { type CodexContextWindowManager } from "./window-manager";
 import {
@@ -9,6 +9,11 @@ import {
 	NOTES_ENDPOINTS,
 } from "./history-notes";
 import type { ContextWindowIdentity, HistoryAction, NotesAction } from "./types";
+
+
+// pi-ai 1.x StringEnum returns a pi-schema type that TypeBox's Static can't infer; keep TypeBox typing with the same {type:"string", enum} shape.
+const StringEnum = <T extends readonly string[]>(values: T, options?: { description?: string; default?: T[number] }) =>
+  Type.Unsafe<T[number]>({ type: "string", enum: [...values], ...options });
 
 const EMPTY_PARAMETERS = Type.Object({}, { additionalProperties: false });
 

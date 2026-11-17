@@ -45,7 +45,8 @@ function text(content: string, id: string) {
 
 try {
 	const { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } = await import("@earendil-works/pi-coding-agent");
-	const { InMemoryCredentialStore, InMemoryModelsStore, fauxAssistantMessage, Type } = await import("@earendil-works/pi-ai");
+	const { InMemoryCredentialStore, InMemoryModelsStore, fauxAssistantMessage } = await import("@earendil-works/pi-ai");
+	const { Type } = await import("typebox");
 	const { MANUAL_COMPACT_ENTRY_TYPE } = await import("../src/context-management/manual-compact");
 	const { CODEX_CONTEXT_WINDOW_MESSAGE_TYPE } = await import("../src/context-management/messages");
 	const configDir = join(env.agentDir, "extensions/pi-openai-toolkit");

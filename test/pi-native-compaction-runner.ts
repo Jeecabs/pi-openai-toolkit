@@ -12,7 +12,8 @@ const env = await createSmokeEnvironment();
 process.env.PI_CACHE_RETENTION = "long";
 try {
 	const { createAgentSession, DefaultResourceLoader, defineTool, ModelRuntime, SessionManager, SettingsManager } = await import("@earendil-works/pi-coding-agent");
-	const { fauxAssistantMessage, InMemoryCredentialStore, InMemoryModelsStore, Type } = await import("@earendil-works/pi-ai");
+	const { fauxAssistantMessage, InMemoryCredentialStore, InMemoryModelsStore } = await import("@earendil-works/pi-ai");
+	const { Type } = await import("typebox");
 	const manifest = JSON.parse(await readFile(join(packageDir, "node_modules/@earendil-works/pi-coding-agent/package.json"), "utf8"));
 	const packageManifest = JSON.parse(await readFile(join(packageDir, "package.json"), "utf8"));
 	const expectedPiVersion = packageManifest.devDependencies?.["@earendil-works/pi-coding-agent"];

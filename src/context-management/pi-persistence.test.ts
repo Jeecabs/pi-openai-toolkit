@@ -17,8 +17,8 @@ import {
 	fauxToolCall,
 	InMemoryCredentialStore,
 	InMemoryModelsStore,
-	Type,
 } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { CODEX_CONTEXT_WINDOW_MESSAGE_TYPE } from "./messages";
 import { createContextManagementTools } from "./tools";
 import { CodexContextWindowManager } from "./window-manager";
