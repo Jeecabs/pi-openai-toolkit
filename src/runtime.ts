@@ -267,18 +267,6 @@ export function buildAlphaSearchUrl(baseUrl: string): string | undefined {
 	return parsed.toString();
 }
 
-async function resolveRequestAuth(ctx: ExtensionContext, model: RuntimeModel): Promise<ResolvedRequestAuth> {
-	const modelRegistry = ctx.modelRegistry as {
-		getApiKeyAndHeaders?: (currentModel: RuntimeModel) => Promise<ResolvedRequestAuth>;
-	};
-
-	if (typeof modelRegistry.getApiKeyAndHeaders !== "function") {
-		return { ok: true };
-	}
-
-	return modelRegistry.getApiKeyAndHeaders(model);
-}
-
 export function isSupportedApi(api: string): api is ResponsesCompactApi {
 	return (RESPONSES_COMPACT_CAPABLE_APIS as readonly string[]).includes(api);
 }
@@ -376,7 +364,7 @@ async function resolveNativeCompactionEnvironmentForModel(
 
 	let auth: ResolvedRequestAuth;
 	try {
-		auth = await resolveRequestAuth(ctx, currentModel);
+		auth = await ctx.modelRegistry.getApiKeyAndHeaders(currentModel);
 	} catch (error) {
 		return {
 			ok: false,

@@ -1,17 +1,20 @@
 import { createHash } from "node:crypto";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { compact, convertToLlm } from "@earendil-works/pi-coding-agent";
-import type {
-	Api,
-	AssistantMessage,
-	ImageContent,
-	Message,
-	Model,
-	TextContent,
-	ThinkingContent,
-	ToolCall,
-	ToolResultMessage,
-	UserMessage,
+import {
+	type Api,
+	type AssistantMessage,
+	getSystemMessageText,
+	type ImageContent,
+	type Message,
+	type Model,
+	renderSystemMessageUpdate,
+	type SystemMessage,
+	type TextContent,
+	type ThinkingContent,
+	type ToolCall,
+	type ToolResultMessage,
+	type UserMessage,
 } from "@earendil-works/pi-ai";
 import type { ResponsesCompatibleRequestPayload } from "./runtime";
 import type { CompactionRequestExtras } from "./request-context-cache";
@@ -88,21 +91,6 @@ export type ResponsesFunctionCallOutputItem = {
 };
 
 export type ResponsesReasoningItem = Record<string, unknown>;
-
-/**
- * Pi 0.86 adds `SystemMessage` to the public `Message` union; 0.85.1 has no system
- * variant and does not export that type name. Use the public shape when the installed
- * Pi declares it and a structural fallback for the fields this serializer consumes
- * otherwise, so one source file type-checks against both supported versions.
- */
-type ResponsesSystemMessage = Extract<Message, { role: "system" }> extends never
-	? {
-			role: "system";
-			content: string | TextContent[];
-			sections?: Record<string, string | null>;
-			timestamp: number;
-		}
-	: Extract<Message, { role: "system" }>;
 
 export type ResponsesInputItem =
 	| ResponsesInputMessageItem
@@ -209,11 +197,9 @@ export function serializeLlmMessagesToResponsesInput<TApi extends Api>(
 	let messageIndex = 0;
 	let sourceIndex = 0;
 	for (const message of transformedMessages) {
-		// Pi 0.85's Message union has no system member, so compare through the
-		// public role string while keeping the 0.86 discriminant runtime-compatible.
 		const isFirstMessage = sourceIndex++ === 0;
 		const isLeadingSystemMessage =
-			!options.firstSystemMessageIsUpdate && isFirstMessage && (message.role as string) === "system";
+			!options.firstSystemMessageIsUpdate && isFirstMessage && message.role === "system";
 
 		if (message.role === "user") {
 			const item = serializeUserMessage(message, model);
@@ -239,8 +225,8 @@ export function serializeLlmMessagesToResponsesInput<TApi extends Api>(
 			continue;
 		}
 
-		// In Pi 0.85.1 this branch narrows to `never`; in Pi 0.86 it is a SystemMessage.
-		// Handle it explicitly instead of letting a new message variant become tool output.
+		// The remaining variant is a SystemMessage. Handle it explicitly instead of
+		// letting a new message variant become tool output.
 		const systemItem = serializeSystemMessage(message, model, isLeadingSystemMessage);
 		if (systemItem) {
 			input.push(systemItem);
@@ -512,7 +498,7 @@ function normalizeUserContent(content: UserMessage["content"]): Array<TextConten
  * message produces no item, matching Pi.
  */
 function serializeSystemMessage<TApi extends Api>(
-	message: ResponsesSystemMessage,
+	message: SystemMessage,
 	model: Model<TApi>,
 	isLeadingSystemMessage: boolean,
 ): ResponsesInputMessageItem | undefined {
@@ -527,45 +513,6 @@ function serializeSystemMessage<TApi extends Api>(
 		role: instructionRole(model),
 		content: text,
 	};
-}
-
-/** Mirrors Pi's public getSystemMessageText() without importing a 0.86-only helper. */
-function getSystemMessageText(message: ResponsesSystemMessage): string {
-	const parts = [contentText(message.content)];
-	for (const text of Object.values(message.sections ?? {})) {
-		if (text !== null) {
-			parts.push(text);
-		}
-	}
-	return parts.filter((part) => part.length > 0).join("\n\n");
-}
-
-/** Mirrors Pi's public renderSystemMessageUpdate() for later transcript updates. */
-function renderSystemMessageUpdate(message: ResponsesSystemMessage): string {
-	const parts: string[] = [];
-	const text = contentText(message.content);
-	if (text.length > 0) {
-		parts.push(text);
-	}
-	for (const [name, value] of Object.entries(message.sections ?? {})) {
-		parts.push(
-			value === null
-				? `Removed system prompt section "${name}".`
-				: `Updated system prompt section "${name}":\n\n${value}`,
-		);
-	}
-	return parts.join("\n\n");
-}
-
-function contentText(content: ResponsesSystemMessage["content"]): string {
-	if (typeof content === "string") {
-		return content;
-	}
-
-	return content
-		.filter((item): item is TextContent => item.type === "text")
-		.map((item) => item.text)
-		.join("\n");
 }
 
 function parseReasoningItem(block: ThinkingContent): ResponsesReasoningItem | undefined {
